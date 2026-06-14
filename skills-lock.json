@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "skills": {
+    "wix-app": {
+      "source": "C:\\wix-cli\\bb-reporting\\node_modules\\@wix\\agent-skills",
+      "sourceType": "local",
+      "computedHash": "e5b660ef157c36ba4b7c8619b5728524a9c4d600dedbe1c2b367c82d60f652e2"
+    },
+    "wix-design-system": {
+      "source": "C:\\wix-cli\\bb-reporting\\node_modules\\@wix\\agent-skills",
+      "sourceType": "local",
+      "computedHash": "302df4ee4b0792776cf9179a4937ba5e9ba008dc7da4dc6b8dc2809ad6d6f023"
+    },
+    "wix-headless": {
+      "source": "C:\\wix-cli\\bb-reporting\\node_modules\\@wix\\agent-skills",
+      "sourceType": "local",
+      "computedHash": "7d0a845537a1b6d6dacadce7432d0ac79588d4306a2ccfd555aeec3e861236e9"
+    },
+    "wix-manage": {
+      "source": "C:\\wix-cli\\bb-reporting\\node_modules\\@wix\\agent-skills",
+      "sourceType": "local",
+      "computedHash": "15af13feac395de0dd27d536980459cf53ca0d9c09d8c24cb5d2ebab8044b207"
+    }
+  }
+}
