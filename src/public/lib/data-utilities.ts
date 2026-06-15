@@ -1,6 +1,6 @@
 import { items } from '@wix/data';
 
-export async function bulkSaveSets(array: any[], collection: string) {
+export async function bulkSaveSets(array: any[], collection: string,statusState:Function) {
     let bulkSets = [];
     let makeSet = [];
     for (let i = 0; i < array.length; i++) {
@@ -15,7 +15,7 @@ export async function bulkSaveSets(array: any[], collection: string) {
 
     let sets = bulkSets.length;
     for (let i = 0; i < bulkSets.length; i++) {
-
+        statusState(`Saving (${i+1}/${sets})`);
         try {
             await items.bulkSave(collection, bulkSets[i]);
         } catch (error) {
@@ -44,35 +44,151 @@ function getObjectSizeInKB(obj: any) {
     return kbSize;
 }
 
+// export async function sumAmountReceived(collection: string, startDate: string, endDate: string) {
+
+//     let allItems = [];
+//     let results = await items.query(collection).ge('createdDate', startDate).le('createdDate', endDate)
+//         .limit(1000)
+//         .find();
+
+//     for (var i = 0; i < results.items.length; i++) {
+//         allItems.push(results.items[i]);
+
+//     }
+
+//     while (results.hasNext()) {
+//         results = await results.next();
+
+
+//         for (var j = 0; j < results.items.length; j++) {
+//             allItems.push(results.items[j]);
+
+//         }
+//     }
+
+//     const sumReceived = allItems.reduce(
+//         (accumulator, currentItem) => accumulator + currentItem.amountReceived,
+//         0,
+//     );
+
+//     // console.log({sumReceived});
+
+//     return sumReceived;
+
+// }
+
 export async function sumAmountReceived(collection: string, startDate: string, endDate: string) {
 
-    let allItems = [];
-    let results = await items.query(collection).ge('createdDate', startDate).le('createdDate', endDate)
-        .limit(1000)
-        .find();
+    const filter = items
+        .filter()
+        .ge('createdDate', startDate)
+        .le('createdDate', endDate);
 
-    for (var i = 0; i < results.items.length; i++) {
-        allItems.push(results.items[i]);
+    const results = await items
+        .aggregate(collection)
+        .filter(filter)
+        .sum('amountReceived')
+        .descending('amountReceivedSum')
+        .run();
+
+    console.log("sumAmountReceived", results);
+
+    return results.items[0]?.amountReceivedSum || 0;
+
+}
+
+
+
+export async function aggregateCollection(
+    collection: string,
+    startDate: string,
+    endDate: string,
+    group?: string,
+): Promise<any[]> {
+    let allItems = [];
+    const filter = items
+        .filter()
+        .ge('createdDate', startDate)
+        .le('createdDate', endDate);
+
+    let agg = items
+        .aggregate(collection)
+        .filter(filter)
+        .sum('amountReceived')
+        .descending('amountReceivedSum')
+        .limit(1000)
+    if (group) {
+        agg = agg.group(group)
+    }
+
+    let results = await
+        agg.run();
+
+    allItems.push(...results.items)
+
+    // console.log(results);
+    while (results.hasNext()) {
+        results = await results.next();
+        allItems.push(...results.items)
 
     }
 
-    while (results.hasNext()) {
-        results = await results.next();
 
 
-        for (var j = 0; j < results.items.length; j++) {
-            allItems.push(results.items[j]);
+    return allItems as any[];
+}
 
+
+export async function aggregateAnalyticsCollections(
+    collections: string[],
+    startDate: string,
+    endDate: string,
+    group: string,
+) {
+    const promises = collections.map(i =>
+        aggregateCollection(i, startDate, endDate, group)
+    );
+
+    const results = await Promise.all(promises);
+
+    const combineResults = combineByKey(
+        results,
+        group,
+        "amountReceivedSum"
+    );
+    console.log("aggregateAnalyticsCollections", combineResults);
+
+    //descending
+    combineResults.sort(function (a, b) {
+        const sortKey = group;
+        if (a[sortKey] < b[sortKey]) { return 1; }
+        if (a[sortKey] > b[sortKey]) { return -1; }
+        return 0;
+    })
+
+    return combineResults;
+}
+
+type AnyRecord = Record<string, any>;
+
+function combineByKey<T extends AnyRecord>(
+    data: T[][],
+    groupKey: keyof T,
+    valueKey: keyof T
+) {
+    const map = new Map<string, number>();
+
+    for (const collection of data) {
+        for (const item of collection) {
+            const key = String(item[groupKey]);
+            const value = Number(item[valueKey]) || 0;
+
+            map.set(key, (map.get(key) ?? 0) + value);
         }
     }
 
-    const sumReceived = allItems.reduce(
-        (accumulator, currentItem) => accumulator + currentItem.amountReceived,
-        0,
-    );
-
-    // console.log({sumReceived});
-    
-    return sumReceived;
-
+    return Array.from(map.entries()).map(([key, sum]) => ({
+        [groupKey]: key,
+        [valueKey]: sum,
+    })) as T[];
 }

@@ -23,6 +23,7 @@
     "@wix/ecom": "^1.0.2141",
     "@wix/essentials": "^0.1.23",
     "@wix/events": "^1.0.781",
+    "@wix/patterns": "^1.416.0",
     "astro": "^5.8.0",
     "typescript": "^5.8.3"
   },

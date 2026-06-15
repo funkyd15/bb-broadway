@@ -1,6 +1,6 @@
 export const config = {
     includeOrder: false,
-    includeItem: true,
+    includeItem: false,
 };
 
 export const wixAppIds = {
@@ -52,9 +52,9 @@ export function getUKTaxYear(
 
     const year = date.getFullYear();
 
-    // UK tax year starts on 6 April
+    // 1 Apr - 31 Mar
     const taxYearStart =
-        date >= new Date(year, 3, 6) // Apr = 3
+        date >= new Date(year, 3, 1) // Apr = 3
             ? year
             : year - 1;
 
@@ -87,15 +87,18 @@ export function getUKTaxYear(
 }
 
 function getTaxQuarter(date: Date, taxYearStart: number): number {
-    const q1Start = new Date(taxYearStart, 3, 6); // 6 Apr
-    const q2Start = new Date(taxYearStart, 6, 6); // 6 Jul
-    const q3Start = new Date(taxYearStart, 9, 6); // 6 Oct
-    const q4Start = new Date(taxYearStart + 1, 0, 6); // 6 Jan
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
 
-    if (date >= q4Start) return 4;
-    if (date >= q3Start) return 3;
-    if (date >= q2Start) return 2;
-    return 1;
+  const q1Start = new Date(taxYearStart, 3, 1);
+  const q2Start = new Date(taxYearStart, 6, 1);
+  const q3Start = new Date(taxYearStart, 9, 1);
+  const q4Start = new Date(taxYearStart + 1, 0, 1);
+
+  if (d >= q4Start) return 4;
+  if (d >= q3Start) return 3;
+  if (d >= q2Start) return 2;
+  return 1;
 }
 
 export function formatGBP(value: number) {

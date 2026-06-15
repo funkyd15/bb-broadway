@@ -111,7 +111,7 @@ export async function queryStoresOrders(startDate: Date, endDate: Date, statusSt
 
     statusState(`Saving: ${allItems.length}`)
 
-    await bulkSaveSets(allItems, anaylticsCollection);
+    await bulkSaveSets(allItems, anaylticsCollection,statusState);
 
     return allItems;
 

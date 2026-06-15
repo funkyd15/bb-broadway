@@ -11,18 +11,31 @@ import {
   Box,
   Cell,
   Layout,
+  Table,
+  Divider,
 } from '@wix/design-system';
+
+import type { TableColumn } from '@wix/patterns';
+
 import '@wix/design-system/styles.global.css';
 import { queryExtendedBookings } from "../../../../public/lib/bookings";
 import { queryStoresOrders } from "../../../../public/lib/stores";
 import { queryEventsOrders } from "../../../../public/lib/events";
+import { queryInvoices } from "../../../../public/lib/invoices";
 import { YYYYMMDD, formatGBP } from "../../../../public/lib/utilities";
 import MultiCheckbox from "../../../../public/lib/multiCheckbox";
-import { sumAmountReceived } from "../../../../public/lib/data-utilities";
+import { sumAmountReceived, aggregateCollection, aggregateAnalyticsCollections } from "../../../../public/lib/data-utilities";
+import DatePickerWithShortcuts from "../../../../public/lib/datePicker";
 
 const w1 = "240px";
 
 const DashboardPage: FC = () => {
+  const analyticsCollections = [
+    'bookingsAnalytics',
+     'eventsAnalytics', 
+     'storesAnalytics', 
+     'invoicesAnalytics'
+    ];
 
   const startOfMonth = new Date(
     new Date().getFullYear(),
@@ -34,20 +47,59 @@ const DashboardPage: FC = () => {
     0,
     1
   );
+   const startOfDay = (date:Date) => {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
+const endOfDay = (date:Date) => {
+const d = new Date(date);
+d.setHours(23, 59, 59, 999);
+return d;
+};
+
+  const getStartOfPreviousQuarter = (date = new Date()) => {
+    const year = date.getFullYear();
+    const month = date.getMonth(); // 0–11
+
+    const currentQuarter = Math.floor(month / 3);
+    const previousQuarter = (currentQuarter + 3) % 4;
+
+    const startYear = currentQuarter === 0 ? year - 1 : year;
+    const startMonth = previousQuarter * 3;
+
+    return startOfDay(new Date(startYear, startMonth, 1));
+  };
+
 
   const [running, setRunning] = useState<Boolean>(false);
-  const [startDate, setStartDate] = useState<Date>(startOfMonth);
-  const [endDate, setEndDate] = useState<Date>(new Date());
+  const [startDate, setStartDate] = useState<Date>(startOfDay(new Date("1 April 2025")));
+  const [endDate, setEndDate] = useState<Date>(endOfDay(new Date("31 March 2026")));
   const [status, setStatus] = useState<String>("Ready");
   const [subStatus, setSubStatus] = useState<String>("Ready");
 
   const [apps, setApps] = useState<string[]>([
-    'bookings', 'stores', 'events',
+    'bookings',
+     'stores', 
+     'events',
+    'invoices'
   ]);
 
   const [sumBookings, setSumBookings] = useState<Number>(0);
   const [sumStores, setSumStores] = useState<Number>(0);
   const [sumEvents, setSumEvents] = useState<Number>(0);
+  const [sumInvoices, setSumInvoices] = useState<Number>(0);
+  const [teacherRows, setTeacherRows] = useState<any[]>([]);
+  const [eventRows, setEventRows] = useState<any[]>([]);
+  const [invoiceRows, setInvoiceRows] = useState<any[]>([]);
+  const [locationRows, setLocationRows] = useState<any[]>([]);
+  const [serviceRows, setServiceRows] = useState<any[]>([]);
+  const [serviceTypeRows, setServiceTypeRows] = useState<any[]>([]);
+  const [termRows, setTermRows] = useState<any[]>([]);
+  const [termYearRows, setTermYearRows] = useState<any[]>([]);
+  const [taxYearRows, setTaxYearRows] = useState<any[]>([]);
+  const [taxQuarterRows, setTaxQuarterRows] = useState<any[]>([]);
 
   useEffect(() => {
     if (!running) {
@@ -55,16 +107,74 @@ const DashboardPage: FC = () => {
     }
   }, [running, startDate, endDate]);
 
-
   async function runSums() {
-    setSumBookings(await sumAmountReceived('bookingsAnalytics', YYYYMMDD(startDate), YYYYMMDD(endDate)));
-    setSumStores(await sumAmountReceived('storesAnalytics', YYYYMMDD(startDate), YYYYMMDD(endDate)));
-    setSumEvents(await sumAmountReceived('eventsAnalytics', YYYYMMDD(startDate), YYYYMMDD(endDate)));
+    const start = YYYYMMDD(startDate);
+    const end = YYYYMMDD(endDate);
 
+    console.log("start:end",start,end);
+    
+
+    const [
+      sumBookings,      // 0
+      sumStores,        // 1
+      sumEvents,        // 2
+      sumInvoices,      // 3
+      teacherRows,      // 4
+      locationRows,     // 5
+      serviceRows,      // 6
+      serviceTypeRows,  // 7
+      termRows,         // 8
+      termYearRows,     // 9
+      eventRows,        // 10
+      invoiceRows,      // 11
+      taxYearRows,      // 12
+      taxQuarterRows,   // 13
+    ] = await Promise.all([
+      sumAmountReceived('bookingsAnalytics', start, end), // 0
+      sumAmountReceived('storesAnalytics', start, end), // 1
+      sumAmountReceived('eventsAnalytics', start, end), // 2
+      sumAmountReceived('invoicesAnalytics', start, end), // 3
+      aggregateCollection('bookingsAnalytics', start, end, 'teacher'), // 4
+      aggregateCollection('bookingsAnalytics', start, end, 'parseLocation'), // 5
+      aggregateCollection('bookingsAnalytics', start, end, 'serviceTitle'), // 6
+      aggregateCollection('bookingsAnalytics', start, end, 'serviceType'), // 7
+      aggregateCollection('bookingsAnalytics', start, end, 'term'), // 8
+      aggregateCollection('bookingsAnalytics', start, end, 'termYear'), // 9
+      aggregateCollection('eventsAnalytics', start, end, 'eventTitle'), // 10
+      aggregateCollection('invoicesAnalytics', start, end, 'title'), // 11
+      aggregateAnalyticsCollections(analyticsCollections, start, end, 'taxYear'), // 12
+      aggregateAnalyticsCollections(analyticsCollections, start, end, 'taxQuarter'), // 13
+    ]);
+
+    setSumBookings(sumBookings); // 0
+    setSumStores(sumStores); // 1
+    setSumEvents(sumEvents); // 2
+    setSumInvoices(sumInvoices); // 3
+    setTeacherRows(teacherRows); // 4
+    setLocationRows(locationRows); // 5
+    setServiceRows(serviceRows); // 6
+    setServiceTypeRows(serviceTypeRows); // 7
+    setTermRows(termRows); // 8
+    setTermYearRows(termYearRows); // 9
+    setEventRows(eventRows); // 10
+    setInvoiceRows(invoiceRows); // 11
+    setTaxYearRows(taxYearRows); // 12
+    setTaxQuarterRows(taxQuarterRows); // 13
   }
+
+  function sumRows(rows: any[]) {
+    const sumReceived = rows.reduce(
+      (accumulator, currentItem) => accumulator + currentItem.amountReceivedSum,
+      0,
+    );
+    return sumReceived;
+  }
+
 
   async function runReport() {
     setRunning(true);
+    console.log(startDate,endDate);
+    
     setStatus("Running Report...");
     if (apps.includes("bookings")) {
       setStatus("Bookings...");
@@ -83,11 +193,164 @@ const DashboardPage: FC = () => {
       const result = await queryEventsOrders(startDate, endDate, setSubStatus);
       console.log(result);
     }
+    if (apps.includes("invoices")) {
+      setStatus("Invoices...");
+      const result = await queryInvoices(startDate, endDate, setSubStatus);
+      console.log(result);
+    }
 
 
     setStatus("Completed");
     setRunning(false);
   }
+
+  const teacherColumns: TableColumn<any>[] = [
+    {
+      id: 'teacher',
+      title: `Teacher (${teacherRows.length})`,
+      render: (item) => item.teacher,
+      width: '250px',
+    },
+    {
+      id: 'amountReceivedSum',
+      title: `Amount Received (${formatGBP(sumBookings)})`,
+      render: (item) => formatGBP(item.amountReceivedSum),
+      width: '250px',
+    },
+  ];
+
+
+  const locationColumns: TableColumn<any>[] = [
+    {
+      id: 'location',
+      title: `Location (${locationRows.length})`,
+      render: (item) => item.parseLocation,
+      width: '250px',
+    },
+    {
+      id: 'amountReceivedSum',
+      title: `Amount Received (${formatGBP(sumBookings)})`,
+      render: (item) => formatGBP(item.amountReceivedSum),
+      width: '250px',
+    },
+  ];
+
+  const serviceColumns: TableColumn<any>[] = [
+    {
+      id: 'Service',
+      title: `Service (${serviceRows.length})`,
+      render: (item) => item.serviceTitle,
+      width: '250px',
+    },
+    {
+      id: 'amountReceivedSum',
+      title: `Amount Received (${formatGBP(sumBookings)})`,
+      render: (item) => formatGBP(item.amountReceivedSum),
+      width: '250px',
+    },
+  ];
+
+  const termColumns: TableColumn<any>[] = [
+    {
+      id: 'Term',
+      title: `Term (${termRows.length})`,
+      render: (item) => item.term,
+      width: '250px',
+    },
+    {
+      id: 'amountReceivedSum',
+      title: `Amount Received (${formatGBP(sumBookings)})`,
+      render: (item) => formatGBP(item.amountReceivedSum),
+      width: '250px',
+    },
+  ];
+  const termYearColumns: TableColumn<any>[] = [
+    {
+      id: 'Term Year',
+      title: `Term Year (${termYearRows.length})`,
+      render: (item) => item.termYear,
+      width: '250px',
+    },
+    {
+      id: 'amountReceivedSum',
+      title: `Amount Received (${formatGBP(sumBookings)})`,
+      render: (item) => formatGBP(item.amountReceivedSum),
+      width: '250px',
+    },
+  ];
+  const taxYearColumns: TableColumn<any>[] = [
+    {
+      id: 'Tax Year',
+      title: `Tax Year (${taxYearRows.length})`,
+      render: (item) => item.taxYear,
+      width: '250px',
+    },
+    {
+      id: 'amountReceivedSum',
+      title: `Amount Received (${formatGBP(sumRows(taxYearRows))})`,
+      render: (item) => formatGBP(item.amountReceivedSum),
+      width: '250px',
+    },
+  ];
+  const taxQuarterColumns: TableColumn<any>[] = [
+    {
+      id: 'Tax Quarter',
+      title: `Tax Quarter (${taxQuarterRows.length})`,
+      render: (item) => item.taxQuarter,
+      width: '250px',
+    },
+    {
+      id: 'amountReceivedSum',
+      title: `Amount Received (${formatGBP(sumRows(taxQuarterRows))})`,
+      render: (item) => formatGBP(item.amountReceivedSum),
+      width: '250px',
+    },
+  ];
+  const serviceTypeColumns: TableColumn<any>[] = [
+    {
+      id: 'Service Type',
+      title: `Service Type (${serviceTypeRows.length})`,
+      render: (item) => item.serviceType,
+      width: '250px',
+    },
+    {
+      id: 'amountReceivedSum',
+      title: `Amount Received (${formatGBP(sumBookings)})`,
+      render: (item) => formatGBP(item.amountReceivedSum),
+      width: '250px',
+    },
+  ];
+
+  const eventColumns: TableColumn<any>[] = [
+    {
+      id: 'eventTitle',
+      title: `Event (${eventRows.length})`,
+      render: (item) => item.eventTitle,
+      width: '250px',
+    },
+    {
+      id: 'amountReceivedSum',
+      title: `Amount Received (${formatGBP(sumEvents)})`,
+      render: (item) => formatGBP(item.amountReceivedSum),
+      width: '250px',
+    },
+  ];
+  const invoiceColumns: TableColumn<any>[] = [
+    {
+      id: 'title',
+      title: `Invoice (${invoiceRows.length})`,
+      render: (item) => item.title,
+      width: '250px',
+    },
+    {
+      id: 'amountReceivedSum',
+      title: `Amount Received (${formatGBP(sumInvoices)})`,
+      render: (item) => formatGBP(item.amountReceivedSum),
+      width: '250px',
+    },
+  ];
+
+
 
   return (
     <WixDesignSystemProvider>
@@ -108,6 +371,7 @@ const DashboardPage: FC = () => {
                       { label: 'Bookings', value: 'bookings' },
                       { label: 'Stores', value: 'stores' },
                       { label: 'Events', value: 'events' },
+                      { label: 'Invoices', value: 'invoices' },
                     ]}
                     selectedValues={apps}
                     onChange={setApps}
@@ -124,7 +388,25 @@ const DashboardPage: FC = () => {
                     <Text secondary>{subStatus}</Text>
                   </Box>
 
-                  <Box direction="vertical" gap="SP1">
+                  <DatePickerWithShortcuts
+                    label="Start Date"
+                    value={startDate}
+                    onChange={setStartDate}
+                    width={w1}
+                      mode="start"
+                     quarterEndMonths={[3, 6, 9, 12]} // VAT quarters ending Mar, Jun, Sep, Dec
+                  />
+
+                  <DatePickerWithShortcuts
+                    label="End Date"
+                    value={endDate}
+                    onChange={setEndDate}
+                    width={w1}
+                    mode="end"
+                     quarterEndMonths={[3, 6, 9, 12]} // VAT quarters ending Mar, Jun, Sep, Dec
+                  />
+
+                  {/* <Box direction="vertical" gap="SP1">
                     <Text secondary>Start Date</Text>
                     <DatePicker
                       width={w1}
@@ -144,8 +426,9 @@ const DashboardPage: FC = () => {
                       value={endDate}
                       onChange={setEndDate}
                     />
-                  </Box>
-                  <Box
+                  </Box> */}
+
+                  {/* <Box
                     width={w1}>
 
                     <Button
@@ -154,7 +437,7 @@ const DashboardPage: FC = () => {
                     >
                       {running ? 'Running...' : 'Process Data'}
                     </Button>
-                  </Box>
+                  </Box> */}
                 </Box>
               </Card>
             </Cell>
@@ -165,13 +448,132 @@ const DashboardPage: FC = () => {
                   <Text>Bookings: {formatGBP(sumBookings)}</Text>
                   <Text>Stores: {formatGBP(sumStores)}</Text>
                   <Text>Events: {formatGBP(sumEvents)}</Text>
+                  <Text>Invoices: {formatGBP(sumInvoices)}</Text>
+
+                  <Box paddingTop="SP2" paddingBottom="SP2">
+                    <Divider />
+                  </Box>
+
+                  <Text weight="bold">
+                    Total: {formatGBP(sumRows(taxYearRows))}
+                  </Text>
                 </Box>
               </Card>
             </Cell>
+
+
+            <Cell span={12}>
+              <Card>
+                <Table
+                  data={taxYearRows}
+                  columns={taxYearColumns}
+                />
+
+              </Card>
+            </Cell>
+            <Cell span={12}>
+              <Card>
+                <Table
+                  data={taxQuarterRows}
+                  columns={taxQuarterColumns}
+                />
+
+              </Card>
+            </Cell>
+
+            <Cell span={12}>
+              <Card>
+                <Table
+                  data={teacherRows}
+                  columns={teacherColumns}
+                />
+
+              </Card>
+            </Cell>
+
+
+            <Cell span={12}>
+              <Card>
+                <Table
+                  data={serviceTypeRows}
+                  columns={serviceTypeColumns}
+                />
+
+              </Card>
+            </Cell>
+
+            <Cell span={12}>
+              <Card>
+                <Table
+                  data={termRows}
+                  columns={termColumns}
+                />
+
+              </Card>
+            </Cell>
+
+            <Cell span={12}>
+              <Card>
+                <Table
+                  data={termYearRows}
+                  columns={termYearColumns}
+                />
+
+              </Card>
+            </Cell>
+
+            <Cell span={12}>
+              <Card>
+                <Table
+                  data={serviceRows}
+                  columns={serviceColumns}
+                />
+
+              </Card>
+            </Cell>
+
+            <Cell span={12}>
+              <Card>
+                <Table
+                  data={locationRows}
+                  columns={locationColumns}
+                />
+
+              </Card>
+            </Cell>
+
+
+            <Cell span={12}>
+              <Card>
+                <Table
+                  data={eventRows}
+                  columns={eventColumns}
+                />
+
+              </Card>
+            </Cell>
+
+            <Cell span={12}>
+              <Card>
+                <Table
+                  data={invoiceRows}
+                  columns={invoiceColumns}
+                />
+
+              </Card>
+            </Cell>
+
+
           </Layout>
+
+
+
+
 
         </Page.Content>
       </Page>
+
+
     </WixDesignSystemProvider>
   );
 };

@@ -46,7 +46,7 @@ export async function queryExtendedBookings(startDate: Date, endDate: Date, stat
             if (findOrder) {
 
                 const findOrderLineItem = findOrder.lineItems?.find(n => n?._id === i.order?.lineItemId);
-                if(findOrderLineItem){
+                if (findOrderLineItem) {
                     amount = Number(findOrderLineItem?.price?.amount) || 0;
                     discount = Number(findOrderLineItem?.totalDiscount?.amount) || 0;
                 }
@@ -61,6 +61,47 @@ export async function queryExtendedBookings(startDate: Date, endDate: Date, stat
             const createdDate = i.booking?._createdDate;
             const createdDateYYYYMMDD = createdDate.toISOString().split("T")[0];
 
+            const serviceTitle = i.booking?.bookedEntity?.title || "";
+
+            const serviceTypesMapping = [
+                { findText: "baby and me", output: "Baby and Me" },
+                { findText: "tiny stars", output: "Tiny Stars" },
+                { findText: "little stars", output: "Little Stars" },
+                { findText: "rising stars", output: "Rising Stars" },
+                { findText: "future stars", output: "Future Stars" },
+                { findText: "toddler and me", output: "Toddler and Me" },
+                { findText: "the ensemble", output: "The Ensemble" },
+                { findText: "big top circus", output: "Big Top Circus" },
+                { findText: "creative craft", output: "Creative Craft" }
+            ];
+
+            const serviceType = serviceTypesMapping.find(m =>
+                serviceTitle.toLowerCase().includes(m.findText)
+            )?.output || "";
+
+            function extractYear(str: string) {
+                return str.match(/\b\d{4}\b/)?.[0] || "";
+            }
+
+            function extractSeason(str: string) {
+                return str.match(/\b(Spring|Summer|Autumn|Winter)\b/i)?.[0] || "";
+            }
+
+            const year = extractYear(serviceTitle);
+            const term = extractSeason(serviceTitle);
+
+            function extractVenue(str: string) {
+                try {
+                    return str.replace(/,\s*\d{1,2}(?::\d{2})?\s*(am|pm)?\s*$/i, "").trim();
+                } catch (error) {
+                    return str
+                }
+            }
+
+            const location = i.booking?.bookedEntity?.slot?.location.name;
+            const parseLocation = extractVenue(location);
+
+
             const parsedItem = {
                 _id: i.booking?._id,
                 createdDate: createdDateYYYYMMDD,
@@ -73,13 +114,18 @@ export async function queryExtendedBookings(startDate: Date, endDate: Date, stat
                 link: `https://manage.wix.com/dashboard/0210b701-c715-482e-bdcf-2e8185181308/ecom-platform/order-details/${i.order?._id}`,
                 paymentStatus,
                 teacher: i.booking?.bookedEntity?.slot?.resource?.name,
-                location: i.booking?.bookedEntity?.slot?.location.name,
-                serviceTitle: i.booking.bookedEntity.title,
+                location,
+                parseLocation,
+                serviceTitle,
+                serviceType,
+                term,
+                termYear: `${term} ${year}`,
                 amount,
                 discount,
-                couponCodes:findOrder?.appliedDiscounts?.map(n=>n.coupon?.code),
+                couponCodes: findOrder?.appliedDiscounts?.map(n => n.coupon?.code),
                 amountReceived,
-                selectedPaymentOption: i.selectedPaymentOption,
+                selectedPaymentOption: i.booking?.selectedPaymentOption,
+                email: i.booking?.contactDetails?.email,
                 order: config.includeOrder ? findOrder : undefined,
                 item: config.includeItem ? i : undefined,
 
@@ -127,7 +173,7 @@ export async function queryExtendedBookings(startDate: Date, endDate: Date, stat
 
     statusState(`Saving: ${allItems.length}`)
 
-    await bulkSaveSets(allItems, anaylticsCollection);
+    await bulkSaveSets(allItems, anaylticsCollection, statusState);
 
     return allItems;
 

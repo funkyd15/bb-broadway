@@ -1,0 +1,74 @@
+import { items } from '@wix/data';
+import { bulkSaveSets } from "./data-utilities";
+import { getUKTaxYear, TaxYearFormat, config, YYYYMMDD } from "./utilities";
+
+const sourceCollection = "invoices";
+const anaylticsCollection = "invoicesAnalytics";
+const limit = 1000;
+
+export async function queryInvoices(startDate: Date, endDate: Date, statusState: Function) {
+    statusState("Running queryInvoices...");
+
+    let allItems = [];
+
+    function updateStatus(page?: Number) {
+        statusState(`Page: ${page}, (${allItems.length})`);
+    }
+
+    async function parseAndSaveInvoices(invoiceItems: any) {
+
+        let parsedItems = [];
+        invoiceItems.forEach((i: any) => {
+            const invoice = i.invoice;
+            invoice.payments.forEach((payment: any) => {
+                const createdDate = payment.date ? new Date(payment.date) : new Date(invoice.dates.issueDate);
+                const createdDateYYYYMMDD = YYYYMMDD(createdDate);
+                const amountReceived = payment.amount;
+                const parsedItem = {
+                    _id: payment.id,
+                    invoiceId:invoice.id.id,
+                    number: invoice.number,
+                    createdDate: createdDateYYYYMMDD,
+                    taxYear: getUKTaxYear(createdDate, TaxYearFormat.Year),
+                    taxQuarter: getUKTaxYear(createdDate, TaxYearFormat.Quarter),
+                    taxMonth: getUKTaxYear(createdDate, TaxYearFormat.Month),
+                    link: `https://manage.wix.com/dashboard/0210b701-c715-482e-bdcf-2e8185181308/wix-invoices`,
+                    paymentStatus:invoice.status,
+                    title:invoice.title || invoice.number,
+                    amountReceived,
+                    email: invoice.customer.email,
+                    item: config.includeItem ? invoice : undefined,
+
+                }
+                parsedItems.push(parsedItem);
+            });
+
+        });
+
+        allItems.push(...parsedItems);
+    }
+
+
+    let page = 0;
+//
+    let results = await items.query(sourceCollection).ge('issueDate', YYYYMMDD(startDate)).le('issueDate', YYYYMMDD(endDate)).limit(limit).find();
+    console.log("invoice", results);
+    updateStatus(page);
+    await parseAndSaveInvoices(results.items);
+
+    while (results.hasNext()) {
+        page++;
+        results = await results.next();
+        updateStatus(page);
+        await parseAndSaveInvoices(results.items);
+
+    }
+
+    statusState(`Saving: ${allItems.length}`)
+
+    await bulkSaveSets(allItems, anaylticsCollection,statusState);
+
+    return allItems;
+
+}
+
