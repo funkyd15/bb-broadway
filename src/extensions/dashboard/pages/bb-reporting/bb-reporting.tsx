@@ -27,17 +27,18 @@ import MultiCheckbox from "../../../../public/lib/multiCheckbox";
 import { sumAmountReceived, aggregateCollection, aggregateAnalyticsCollections } from "../../../../public/lib/data-utilities";
 import DatePickerWithShortcuts from "../../../../public/lib/datePicker";
 import { queryPricingPlans } from "../../../../public/lib/pricingPlans";
+import { exportToCSV } from "../../../../public/lib/csv";
 
 const w1 = "240px";
 
 const DashboardPage: FC = () => {
   const analyticsCollections = [
     'bookingsAnalytics',
-     'eventsAnalytics', 
-     'storesAnalytics', 
-     'invoicesAnalytics',
-     'pricingPlanAnalytics',
-    ];
+    'eventsAnalytics',
+    'storesAnalytics',
+    'invoicesAnalytics',
+    'pricingPlanAnalytics',
+  ];
 
   const startOfMonth = new Date(
     new Date().getFullYear(),
@@ -49,17 +50,17 @@ const DashboardPage: FC = () => {
     0,
     1
   );
-   const startOfDay = (date:Date) => {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-};
+  const startOfDay = (date: Date) => {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  };
 
-const endOfDay = (date:Date) => {
-const d = new Date(date);
-d.setHours(23, 59, 59, 999);
-return d;
-};
+  const endOfDay = (date: Date) => {
+    const d = new Date(date);
+    d.setHours(23, 59, 59, 999);
+    return d;
+  };
 
   const getStartOfPreviousQuarter = (date = new Date()) => {
     const year = date.getFullYear();
@@ -82,10 +83,10 @@ return d;
   const [subStatus, setSubStatus] = useState<String>("Ready");
 
   const [apps, setApps] = useState<string[]>([
-    // 'bookings',
-    //  'stores', 
-    //  'events',
-    // 'invoices',
+    'bookings',
+     'stores', 
+     'events',
+    'invoices',
     'pricingPlans',
   ]);
 
@@ -117,8 +118,8 @@ return d;
     const start = YYYYMMDD(startDate);
     const end = YYYYMMDD(endDate);
 
-    console.log("start:end",start,end);
-    
+    console.log("start:end", start, end);
+
 
     const [
       sumBookings,      // 0
@@ -188,11 +189,23 @@ return d;
     return sumReceived;
   }
 
+  async function runExportToCSV() {
+    setRunning(true);
+    try {
+      await exportToCSV(startDate, endDate, setSubStatus);
+      
+    } catch (error) {
+      console.error(error);
+      
+    }
+    setRunning(false);
+  }
+
 
   async function runReport() {
     setRunning(true);
-    console.log(startDate,endDate);
-    
+    console.log(startDate, endDate);
+
     setStatus("Running Report...");
     if (apps.includes("bookings")) {
       setStatus("Bookings...");
@@ -433,8 +446,8 @@ return d;
                     value={startDate}
                     onChange={setStartDate}
                     width={w1}
-                      mode="start"
-                     quarterEndMonths={[3, 6, 9, 12]} // VAT quarters ending Mar, Jun, Sep, Dec
+                    mode="start"
+                    quarterEndMonths={[3, 6, 9, 12]} // VAT quarters ending Mar, Jun, Sep, Dec
                   />
 
                   <DatePickerWithShortcuts
@@ -443,7 +456,7 @@ return d;
                     onChange={setEndDate}
                     width={w1}
                     mode="end"
-                     quarterEndMonths={[3, 6, 9, 12]} // VAT quarters ending Mar, Jun, Sep, Dec
+                    quarterEndMonths={[3, 6, 9, 12]} // VAT quarters ending Mar, Jun, Sep, Dec
                   />
 
                   {/* <Box direction="vertical" gap="SP1">
@@ -468,7 +481,7 @@ return d;
                     />
                   </Box> */}
 
-                  <Box
+                  {/* <Box
                     width={w1}>
 
                     <Button
@@ -477,7 +490,19 @@ return d;
                     >
                       {running ? 'Running...' : 'Process Data'}
                     </Button>
+                  </Box> */}
+
+                  <Box
+                    width={w1}>
+
+                    <Button
+                      onClick={runExportToCSV}
+                      disabled={running}
+                    >
+                      Export CSV
+                    </Button>
                   </Box>
+                  
                 </Box>
               </Card>
             </Cell>
@@ -489,6 +514,7 @@ return d;
                   <Text>Stores: {formatGBP(sumStores)}</Text>
                   <Text>Events: {formatGBP(sumEvents)}</Text>
                   <Text>Invoices: {formatGBP(sumInvoices)}</Text>
+                  <Text>Pricing Plans: {formatGBP(sumPricingPlans)}</Text>
 
                   <Box paddingTop="SP2" paddingBottom="SP2">
                     <Divider />
@@ -501,15 +527,7 @@ return d;
               </Card>
             </Cell>
 
-              <Cell span={12}>
-              <Card>
-                <Table
-                  data={pricingPlanRows}
-                  columns={pricingPlanColumns}
-                />
 
-              </Card>
-            </Cell>
 
 
 
@@ -527,6 +545,16 @@ return d;
                 <Table
                   data={taxQuarterRows}
                   columns={taxQuarterColumns}
+                />
+
+              </Card>
+            </Cell>
+
+            <Cell span={12}>
+              <Card>
+                <Table
+                  data={pricingPlanRows}
+                  columns={pricingPlanColumns}
                 />
 
               </Card>
@@ -614,7 +642,7 @@ return d;
               </Card>
             </Cell>
 
-          
+
 
           </Layout>
 

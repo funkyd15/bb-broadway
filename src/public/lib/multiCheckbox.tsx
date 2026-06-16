@@ -47,8 +47,7 @@ export const MultiCheckbox: React.FC<MultiCheckboxProps> = ({
     <Box direction="vertical" gap="12px">
       {showSelectAll && (
         <Checkbox
-          checked={isAllSelected || (!isAllSelected && !isAllDeselected)}
-          disabled={!isAllSelected && !isAllDeselected}
+          checked={isAllSelected}
           onChange={toggleAll}
         >
           {selectAllLabel}
