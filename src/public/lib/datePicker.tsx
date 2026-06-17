@@ -49,6 +49,11 @@ export default function DatePickerWithShortcuts({
         onChange(updater(new Date(value)));
     };
 
+  const addDays = (date: Date, days: number): Date => {
+    const d = new Date(date);
+    d.setDate(d.getDate() + days);
+    return d;
+};
     const addMonths = (date: Date, months: number): Date => {
         const d = new Date(date);
         d.setMonth(d.getMonth() + months);
@@ -209,6 +214,26 @@ export default function DatePickerWithShortcuts({
                     -M
                 </Button>
 
+                <Button
+                    size="tiny"
+                    skin="light"
+                    onClick={() => updateDate((d) => addDays(d, -7))}
+                    disabled={disabled}
+
+                >
+                    -W
+                </Button>
+
+                <Button
+                    size="tiny"
+                    skin="light"
+                    onClick={() => updateDate((d) => addDays(d, -1))}
+                    disabled={disabled}
+
+                >
+                    -D
+                </Button>
+
                 {/* TODAY (center anchor) */}
                 <Box paddingLeft="SP2" paddingRight="SP2">
                     <Button
@@ -221,6 +246,26 @@ export default function DatePickerWithShortcuts({
                         Today
                     </Button>
                 </Box>
+
+                 <Button
+                    size="tiny"
+                    skin="light"
+                    onClick={() => updateDate((d) => addDays(d, 1))}
+                    disabled={disabled}
+
+                >
+                    +D
+                </Button>
+
+                    <Button
+                    size="tiny"
+                    skin="light"
+                    onClick={() => updateDate((d) => addDays(d, 7))}
+                    disabled={disabled}
+
+                >
+                    +W
+                </Button>
 
 
                 <Button

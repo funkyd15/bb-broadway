@@ -56,7 +56,7 @@ export async function queryExtendedBookings(startDate: Date, endDate: Date, stat
             const singleClassFees = findOrder?.additionalFees?.filter(f => f.code === "single-class-fees") || [];
             const additionalFeesAmount = singleClassFees.length > 0 ? Number(singleClassFees[0].price?.amount) : 0
 
-            const amountReceived = paymentStatus === "REFUNDED" ? 0 : amount + additionalFeesAmount - discount;
+            const amountReceived = paymentStatus === "REFUNDED" || paymentStatus === "NOT_PAID" ? 0 : amount + additionalFeesAmount - discount;
 
             const createdDate = i.booking?._createdDate;
             const createdDateYYYYMMDD = createdDate.toISOString().split("T")[0];

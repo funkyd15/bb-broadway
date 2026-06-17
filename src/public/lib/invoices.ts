@@ -23,7 +23,9 @@ export async function queryInvoices(startDate: Date, endDate: Date, statusState:
             invoice.payments.forEach((payment: any) => {
                 const createdDate = payment.date ? new Date(payment.date) : new Date(invoice.dates.issueDate);
                 const createdDateYYYYMMDD = YYYYMMDD(createdDate);
-                const amountReceived = payment.amount;
+
+                const paymentStatus =invoice.status;
+                const amountReceived =paymentStatus === "Void" ? 0 :  payment.amount ;
                 const parsedItem = {
                     _id: payment.id,
                     invoiceId:invoice.id.id,
@@ -33,7 +35,7 @@ export async function queryInvoices(startDate: Date, endDate: Date, statusState:
                     taxQuarter: getUKTaxYear(createdDate, TaxYearFormat.Quarter),
                     taxMonth: getUKTaxYear(createdDate, TaxYearFormat.Month),
                     link: `https://manage.wix.com/dashboard/0210b701-c715-482e-bdcf-2e8185181308/wix-invoices`,
-                    paymentStatus:invoice.status,
+                    paymentStatus,
                     title:invoice.title || invoice.number,
                     amountReceived,
                     email: invoice.customer.email,

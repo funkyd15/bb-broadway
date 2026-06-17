@@ -12,6 +12,7 @@ interface MultiCheckboxProps {
   onChange: (values: string[]) => void;
   showSelectAll?: boolean;
   selectAllLabel?: string;
+  disabled?:boolean;
 }
 
 export const MultiCheckbox: React.FC<MultiCheckboxProps> = ({
@@ -20,6 +21,7 @@ export const MultiCheckbox: React.FC<MultiCheckboxProps> = ({
   onChange,
   showSelectAll = true,
   selectAllLabel = 'Select All',
+  disabled= false,
 }) => {
   const isAllSelected =
     items.length > 0 &&
@@ -49,16 +51,18 @@ export const MultiCheckbox: React.FC<MultiCheckboxProps> = ({
         <Checkbox
           checked={isAllSelected}
           onChange={toggleAll}
-        >
+          disabled={disabled}
+          >
           {selectAllLabel}
         </Checkbox>
       )}
 
       {items.map((item) => (
         <Checkbox
-          key={item.value}
-          checked={selectedValues.includes(item.value)}
-          onChange={() => toggleItem(item.value)}
+        key={item.value}
+        checked={selectedValues.includes(item.value)}
+        onChange={() => toggleItem(item.value)}
+        disabled={disabled}
         >
           {item.label}
         </Checkbox>

@@ -113,17 +113,27 @@ const DashboardPage: FC = () => {
   const [taxQuarterRows, setTaxQuarterRows] = useState<any[]>([]);
 
   useEffect(() => {
-    if (!running) {
-      runSums();
-      setStatus("Ready");
-      setSubStatus("");
-    }
-
     setDateRange(parseDateRange(startDate, endDate));
-  }, [running, startDate, endDate]);
 
+    const timeout = setTimeout(() => {
+      if (!running) {
+        runSums();
+      }
 
+    }, 300);
 
+    return () => clearTimeout(timeout);
+  }, [startDate, endDate]);
+  useEffect(() => {
+    
+      if (!running) {
+  setStatus("Ready");
+      setSubStatus("");
+      }
+  
+  }, [running]);
+
+  
   async function runSums() {
     const start = YYYYMMDD(startDate);
     const end = YYYYMMDD(endDate);
@@ -201,13 +211,15 @@ const DashboardPage: FC = () => {
 
   async function runExportToCSV() {
     setRunning(true);
+    setStatus("Exporting...");
     try {
       await exportToCSV(startDate, endDate, setSubStatus);
-
+      
     } catch (error) {
       console.error(error);
-
+      
     }
+    setStatus("Complete");
     setRunning(false);
   }
 
@@ -247,8 +259,13 @@ const DashboardPage: FC = () => {
       console.log(result);
     }
 
-    setStatus("Completed");
+    setSubStatus("Running Aggregate");
     
+    await runSums();
+    
+    setStatus("Completed");
+    setSubStatus("");
+
     setRunning(false);
   }
 
@@ -445,6 +462,7 @@ const DashboardPage: FC = () => {
                               ]}
                               selectedValues={apps}
                               onChange={setApps}
+                              disabled={running}
                             />
                           </Box>
 
@@ -487,7 +505,7 @@ const DashboardPage: FC = () => {
             <Cell span={12}>
               <Card>
                 <Box padding="SP4" direction="vertical" gap="SP4">
-                  
+
 
                   <DatePickerWithShortcuts
                     label="Start Date"
@@ -497,7 +515,7 @@ const DashboardPage: FC = () => {
                     mode="start"
                     quarterEndMonths={[3, 6, 9, 12]} // VAT quarters ending Mar, Jun, Sep, Dec
                     disabled={running}
-                    />
+                  />
 
                   <DatePickerWithShortcuts
                     label="End Date"
@@ -520,10 +538,10 @@ const DashboardPage: FC = () => {
             <Cell span={12}>
               <Card>
                 <Box padding="SP3" direction="vertical" gap="SP2">
-                    <Heading  size="medium" >{dateRange}</Heading>
-               
+                  <Heading size="medium" >{dateRange}</Heading>
 
-                   <Box paddingTop="SP1" paddingBottom="SP1">
+
+                  <Box paddingTop="SP1" paddingBottom="SP1">
                     <Divider />
                   </Box>
 
