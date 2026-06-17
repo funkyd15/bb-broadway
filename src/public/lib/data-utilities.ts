@@ -3,6 +3,8 @@ import { items } from '@wix/data';
 export async function bulkSaveSets(array: any[], collection: string,statusState:Function) {
     let bulkSets = [];
     let makeSet = [];
+    array = await translateValues(array);
+
     for (let i = 0; i < array.length; i++) {
         let item = array[i];
         if (getObjectSizeInKB(makeSet.concat(item)) > 1000 || makeSet.length === 1000) {
@@ -44,6 +46,29 @@ function getObjectSizeInKB(obj: any) {
     return kbSize;
 }
 
+async function translateValues(array: any[]) {
+    const results = await items
+        .query('analyticsValueTranslations')
+        .ne('toValue', undefined)
+        .ne('fromValue', undefined)
+        .ne('fieldKey', undefined)
+        .find();
+
+    for (const translation of results.items ?? []) {
+        for (const item of array) {
+            const value = item[translation.fieldKey];
+
+            if (
+                typeof value === "string" &&
+                value.trim() === translation.fromValue
+            ) {
+                item[translation.fieldKey] = translation.toValue;
+            }
+        }
+    }
+
+    return array;
+}
 // export async function sumAmountReceived(collection: string, startDate: string, endDate: string) {
 
 //     let allItems = [];
