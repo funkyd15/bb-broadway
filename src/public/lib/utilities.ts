@@ -107,3 +107,48 @@ export function formatGBP(value: number) {
         currency: 'GBP',
     }).format(value);
 }
+
+export function parseDateRange(startDate:Date, endDate:Date) {
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+
+  const sy = start.getFullYear();
+  const sm = start.getMonth();
+  const sd = start.getDate();
+
+  const ey = end.getFullYear();
+  const em = end.getMonth();
+  const ed = end.getDate();
+
+  // Financial Year
+  if (sm === 3 && sd === 1 && em === 2 && ed === 31) {
+    if (ey === sy + 1) {
+      return `FY: ${sy}/${ey}`;
+    }
+
+    return `FY: ${sy} to ${ey}`;
+  }
+
+  // Quarters
+  const quarters = [
+    { q: 1, startM: 0, startD: 1, endM: 2, endD: 31 },
+    { q: 2, startM: 3, startD: 1, endM: 5, endD: 30 },
+    { q: 3, startM: 6, startD: 1, endM: 8, endD: 30 },
+    { q: 4, startM: 9, startD: 1, endM: 11, endD: 31 },
+  ];
+
+  for (const q of quarters) {
+    if (
+      sm === q.startM &&
+      sd === q.startD &&
+      em === q.endM &&
+      ed === q.endD &&
+      sy === ey
+    ) {
+      return `Q${q.q}: ${sy}`;
+    }
+  }
+
+  // Fallback
+  return `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`;
+}

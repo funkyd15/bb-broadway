@@ -13,6 +13,9 @@ import {
   Layout,
   Table,
   Divider,
+  Accordion,
+  accordionItemBuilder,
+  Heading,
 } from '@wix/design-system';
 
 import type { TableColumn } from '@wix/patterns';
@@ -22,7 +25,7 @@ import { queryExtendedBookings } from "../../../../public/lib/bookings";
 import { queryStoresOrders } from "../../../../public/lib/stores";
 import { queryEventsOrders } from "../../../../public/lib/events";
 import { queryInvoices } from "../../../../public/lib/invoices";
-import { YYYYMMDD, formatGBP } from "../../../../public/lib/utilities";
+import { YYYYMMDD, formatGBP, parseDateRange } from "../../../../public/lib/utilities";
 import MultiCheckbox from "../../../../public/lib/multiCheckbox";
 import { sumAmountReceived, aggregateCollection, aggregateAnalyticsCollections } from "../../../../public/lib/data-utilities";
 import DatePickerWithShortcuts from "../../../../public/lib/datePicker";
@@ -81,11 +84,12 @@ const DashboardPage: FC = () => {
   const [endDate, setEndDate] = useState<Date>(endOfDay(new Date("31 March 2026")));
   const [status, setStatus] = useState<String>("Ready");
   const [subStatus, setSubStatus] = useState<String>("Ready");
+  const [dateRange, setDateRange] = useState<String>("Ready");
 
   const [apps, setApps] = useState<string[]>([
     'bookings',
-     'stores', 
-     'events',
+    'stores',
+    'events',
     'invoices',
     'pricingPlans',
   ]);
@@ -111,8 +115,14 @@ const DashboardPage: FC = () => {
   useEffect(() => {
     if (!running) {
       runSums();
+      setStatus("Ready");
+      setSubStatus("");
     }
+
+    setDateRange(parseDateRange(startDate, endDate));
   }, [running, startDate, endDate]);
+
+
 
   async function runSums() {
     const start = YYYYMMDD(startDate);
@@ -193,10 +203,10 @@ const DashboardPage: FC = () => {
     setRunning(true);
     try {
       await exportToCSV(startDate, endDate, setSubStatus);
-      
+
     } catch (error) {
       console.error(error);
-      
+
     }
     setRunning(false);
   }
@@ -238,7 +248,7 @@ const DashboardPage: FC = () => {
     }
 
     setStatus("Completed");
-    setSubStatus("");
+    
     setRunning(false);
   }
 
@@ -413,22 +423,63 @@ const DashboardPage: FC = () => {
         />
 
         <Page.Content>
-          <Page.Section title="Inputs" > </Page.Section>
+          <Page.Section > </Page.Section>
           <Layout gap="SP4">
+
             <Cell span={12}>
               <Card>
-                <Box padding="SP3">
-                  <MultiCheckbox
-                    items={[
-                      { label: 'Bookings', value: 'bookings' },
-                      { label: 'Stores', value: 'stores' },
-                      { label: 'Events', value: 'events' },
-                      { label: 'Invoices', value: 'invoices' },
-                      { label: 'Pricing Plans', value: 'pricingPlans' },
-                    ]}
-                    selectedValues={apps}
-                    onChange={setApps}
-                  />
+                <Accordion
+                  items={[
+                    accordionItemBuilder({
+                      title: 'Data Processing',
+                      children: (
+                        <Box padding="SP4" direction="vertical" gap="SP4">
+                          <Box padding="SP3">
+                            <MultiCheckbox
+                              items={[
+                                { label: 'Bookings', value: 'bookings' },
+                                { label: 'Stores', value: 'stores' },
+                                { label: 'Events', value: 'events' },
+                                { label: 'Invoices', value: 'invoices' },
+                                { label: 'Pricing Plans', value: 'pricingPlans' },
+                              ]}
+                              selectedValues={apps}
+                              onChange={setApps}
+                            />
+                          </Box>
+
+                          <Box width={w1}>
+                            <Button
+                              onClick={runReport}
+                              disabled={running}
+                            >
+                              {running ? 'Running...' : 'Process Data'}
+                            </Button>
+                          </Box>
+                        </Box>
+                      ),
+                    }),
+                  ]}
+                />
+              </Card>
+            </Cell>
+
+            <Cell span={12}>
+              <Card>
+                <Box padding="SP4" direction="horizontal" align="center">
+                  <Box direction="vertical" gap="SP1">
+                    <Text weight="bold">{status}</Text>
+                    <Text secondary>{subStatus}</Text>
+                  </Box>
+
+                  <Box width="100%" />
+
+                  <Button
+                    onClick={runExportToCSV}
+                    disabled={running}
+                  >
+                    Export CSV
+                  </Button>
                 </Box>
               </Card>
             </Cell>
@@ -436,10 +487,7 @@ const DashboardPage: FC = () => {
             <Cell span={12}>
               <Card>
                 <Box padding="SP4" direction="vertical" gap="SP4">
-                  <Box direction="vertical" gap="SP1">
-                    <Text weight="bold">{status}</Text>
-                    <Text secondary>{subStatus}</Text>
-                  </Box>
+                  
 
                   <DatePickerWithShortcuts
                     label="Start Date"
@@ -448,7 +496,8 @@ const DashboardPage: FC = () => {
                     width={w1}
                     mode="start"
                     quarterEndMonths={[3, 6, 9, 12]} // VAT quarters ending Mar, Jun, Sep, Dec
-                  />
+                    disabled={running}
+                    />
 
                   <DatePickerWithShortcuts
                     label="End Date"
@@ -457,63 +506,31 @@ const DashboardPage: FC = () => {
                     width={w1}
                     mode="end"
                     quarterEndMonths={[3, 6, 9, 12]} // VAT quarters ending Mar, Jun, Sep, Dec
+                    disabled={running}
                   />
 
-                  {/* <Box direction="vertical" gap="SP1">
-                    <Text secondary>Start Date</Text>
-                    <DatePicker
-                      width={w1}
-                      dateStyle="medium"
-                      filterDate={(date) => date < new Date()}
-                      value={startDate}
-                      onChange={setStartDate}
-                    />
-                  </Box>
 
-                  <Box direction="vertical" gap="SP1">
-                    <Text secondary>End Date</Text>
-                    <DatePicker
-                      width={w1}
-                      dateStyle="medium"
-                      filterDate={(date) => date < new Date()}
-                      value={endDate}
-                      onChange={setEndDate}
-                    />
-                  </Box> */}
 
-                  {/* <Box
-                    width={w1}>
-
-                    <Button
-                      onClick={runReport}
-                      disabled={running}
-                    >
-                      {running ? 'Running...' : 'Process Data'}
-                    </Button>
-                  </Box> */}
-
-                  <Box
-                    width={w1}>
-
-                    <Button
-                      onClick={runExportToCSV}
-                      disabled={running}
-                    >
-                      Export CSV
-                    </Button>
-                  </Box>
-                  
                 </Box>
               </Card>
             </Cell>
 
+
+
             <Cell span={12}>
               <Card>
                 <Box padding="SP3" direction="vertical" gap="SP2">
+                    <Heading  size="medium" >{dateRange}</Heading>
+               
+
+                   <Box paddingTop="SP1" paddingBottom="SP1">
+                    <Divider />
+                  </Box>
+
                   <Text>Bookings: {formatGBP(sumBookings)}</Text>
-                  <Text>Stores: {formatGBP(sumStores)}</Text>
                   <Text>Events: {formatGBP(sumEvents)}</Text>
                   <Text>Invoices: {formatGBP(sumInvoices)}</Text>
+                  <Text>Stores: {formatGBP(sumStores)}</Text>
                   <Text>Pricing Plans: {formatGBP(sumPricingPlans)}</Text>
 
                   <Box paddingTop="SP2" paddingBottom="SP2">

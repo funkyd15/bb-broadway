@@ -9,7 +9,10 @@ type Props = {
     mode?: 'start' | 'end';
     width?: string;
     quarterEndMonths?: number[];
+    disabled?: boolean;
 };
+
+
 
 export default function DatePickerWithShortcuts({
     label,
@@ -18,7 +21,29 @@ export default function DatePickerWithShortcuts({
     mode = 'start',
     width = '240px',
     quarterEndMonths = [3, 6, 9, 12],
+    disabled = false,
 }: Props) {
+    function isFY(date: Date) {
+        const month = date.getMonth();
+        const day = date.getDate();
+        if (month === 3 && day === 1) return true
+        if (month === 2 && day === 31) return true
+    }
+    function isQ(date: Date) {
+        const month = date.getMonth(); // 0-based
+        const day = date.getDate();
+
+        return (
+            (month === 0 && day === 1) || // Jan 1
+            (month === 2 && day === 31) || // Mar 31
+            (month === 3 && day === 1) || // Apr 1
+            (month === 5 && day === 30) || // Jun 30
+            (month === 6 && day === 1) || // Jul 1
+            (month === 8 && day === 30) || // Sep 30
+            (month === 9 && day === 1) || // Oct 1
+            (month === 11 && day === 31)    // Dec 31
+        );
+    }
     const updateDate = (updater: (date: Date) => Date) => {
         if (!value) return;
         onChange(updater(new Date(value)));
@@ -140,13 +165,16 @@ export default function DatePickerWithShortcuts({
                 dateStyle="medium"
                 value={value}
                 onChange={onChange}
+                disabled={disabled}
             />
 
             <Box direction="horizontal" gap="SP1" wrap>
                 <Button
                     size="tiny"
-                    skin="light"
+                    skin={isFY(value) ? "standard" : "light"}
                     onClick={() => updateDate(previousFinancialYear)}
+                    disabled={disabled}
+
                 >
                     -FY
                 </Button>
@@ -155,14 +183,18 @@ export default function DatePickerWithShortcuts({
                     size="tiny"
                     skin="light"
                     onClick={() => updateDate((d) => addYears(d, -1))}
+                    disabled={disabled}
+
                 >
                     -Y
                 </Button>
 
                 <Button
                     size="tiny"
-                    skin="light"
+                    skin={isQ(value) ? "standard" : "light"}
                     onClick={() => updateDate(previousQuarter)}
+                    disabled={disabled}
+
                 >
                     -Q
                 </Button>
@@ -171,6 +203,8 @@ export default function DatePickerWithShortcuts({
                     size="tiny"
                     skin="light"
                     onClick={() => updateDate((d) => addMonths(d, -1))}
+                    disabled={disabled}
+
                 >
                     -M
                 </Button>
@@ -179,7 +213,9 @@ export default function DatePickerWithShortcuts({
                 <Box paddingLeft="SP2" paddingRight="SP2">
                     <Button
                         size="tiny"
-                        skin={YYYYMMDD(value) === YYYYMMDD(new Date())?"standard":"light"}
+                        skin={YYYYMMDD(value) === YYYYMMDD(new Date()) ? "standard" : "light"}
+                        disabled={disabled}
+
                         onClick={() => onChange(new Date())}
                     >
                         Today
@@ -191,14 +227,18 @@ export default function DatePickerWithShortcuts({
                     size="tiny"
                     skin="light"
                     onClick={() => updateDate((d) => addMonths(d, 1))}
+                    disabled={disabled}
+
                 >
                     +M
                 </Button>
 
                 <Button
                     size="tiny"
-                    skin="light"
+                    skin={isQ(value) ? "standard" : "light"}
                     onClick={() => updateDate(nextQuarter)}
+                    disabled={disabled}
+
                 >
                     +Q
                 </Button>
@@ -207,14 +247,18 @@ export default function DatePickerWithShortcuts({
                     size="tiny"
                     skin="light"
                     onClick={() => updateDate((d) => addYears(d, 1))}
+                    disabled={disabled}
+
                 >
                     +Y
                 </Button>
 
                 <Button
                     size="tiny"
-                    skin="light"
+                    skin={isFY(value) ? "standard" : "light"}
                     onClick={() => updateDate(nextFinancialYear)}
+                    disabled={disabled}
+
                 >
                     +FY
                 </Button>

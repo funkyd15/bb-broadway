@@ -23,7 +23,7 @@ async function queryAnalyticsCollection(startDate: Date, endDate: Date, statusSt
     const startDt = YYYYMMDD(startDate);
     const endDt = YYYYMMDD(endDate);
 
-    let allItems:any[] = [];
+    let allItems: any[] = [];
 
     function pushItems(array: any[], collection: string) {
         array.forEach(n => {
@@ -36,7 +36,7 @@ async function queryAnalyticsCollection(startDate: Date, endDate: Date, statusSt
     for (let i = 0; i < analyticsCollections.length; i++) {
         const collection = analyticsCollections[i];
         statusState(`${collection}...${allItems.length}`);
-        let results = await wixData.query(collection).ge('createdDate', startDt).le('createdDate', endDt).limit(1000).find();
+        let results = await wixData.query(collection).ge('createdDate', startDt).le('createdDate', endDt).descending('createdDate').limit(1000).find();
         pushItems(results.items, collection);
 
 
@@ -66,12 +66,45 @@ async function uploadCSV(jsonData: any[], filename: string, filePath: string) {
             "order",
         ];
 
-        const allKeys = [...new Set(jsonData.flatMap(Object.keys))].filter(key => !keysToRemove.includes(key));
+        const allKeys = [...new Set(jsonData.flatMap(Object.keys))]
+            .filter(key => !keysToRemove.includes(key));
+
+        const sortKeys = [
+            "_id",
+            "createdDate",
+            "taxYear",
+            "taxQuarter",
+            "taxMonth",
+            "amountReceived",
+            "collection",
+            "link",
+        ];
+
+
+        allKeys.sort((a, b) => {
+            const aIndex = sortKeys.indexOf(a);
+            const bIndex = sortKeys.indexOf(b);
+
+            // Both are sort keys
+            if (aIndex !== -1 && bIndex !== -1) {
+                return aIndex - bIndex;
+            }
+
+            // Only a is a sort key
+            if (aIndex !== -1) return -1;
+
+            // Only b is a sort key
+            if (bIndex !== -1) return 1;
+
+            // Neither is a sort key
+            return 0;
+        });
+
         const csv = Papa.unparse({ fields: allKeys, data: jsonData });
         const csvWithBOM = "\uFEFF" + csv;
         const buffer = Buffer.from(csvWithBOM, "utf-8");
 
-        console.log(buffer);
+        // console.log(buffer);
 
         // 2. Generate upload URL
         const uploadUrlRes = await files.generateFileUploadUrl("text/csv", {
