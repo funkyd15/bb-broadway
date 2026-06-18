@@ -1,4 +1,4 @@
-import { extendedBookings } from "@wix/bookings";
+import { extendedBookings, services } from "@wix/bookings";
 import { orders } from "@wix/ecom";
 import { bulkSaveSets } from "./data-utilities";
 import { getUKTaxYear, TaxYearFormat, config } from "./utilities";
@@ -16,9 +16,10 @@ export async function queryExtendedBookings(startDate: Date, endDate: Date, stat
     }
 
     async function parseAndSaveBookings(items) {
-        const orderIds = items
-            .map((i: any) => i.order?._id)
-            .filter(Boolean);
+        const
+            orderIds = [...new Set(items
+                .map((i: any) => i.order?._id)
+                .filter(Boolean))];
         // console.log(orderIds);
 
 
@@ -30,7 +31,23 @@ export async function queryExtendedBookings(startDate: Date, endDate: Date, stat
         }
         );
 
+        const serviceIds = [...new Set(items
+            .map((i: any) => i.booking?.bookedEntity?.slot?.serviceId)
+            .filter(Boolean))];
+
         const orderItems = ordersResponse.orders;
+
+        const serviceResponse = await services.queryServices({
+            filter: {
+                "_id": { "$in": serviceIds },
+            }
+            , paging: { limit: limit }
+        }
+        );
+
+        // console.log("serviceResponse", serviceResponse, serviceIds);
+
+        const serviceItems = serviceResponse.services;
 
         // console.log({ ordersResponse });
 
@@ -38,6 +55,7 @@ export async function queryExtendedBookings(startDate: Date, endDate: Date, stat
         let parsedItems = [];
         items.forEach((i: any) => {
             const findOrder = orderItems?.find(n => n._id === i.order?._id);
+            const findService = serviceItems?.find(n => n._id === i.booking?.bookedEntity?.slot?.serviceId);
 
             const paymentStatus = i.booking?.paymentStatus;
 
@@ -50,6 +68,14 @@ export async function queryExtendedBookings(startDate: Date, endDate: Date, stat
                     amount = Number(findOrderLineItem?.price?.amount) || 0;
                     discount = Number(findOrderLineItem?.totalDiscount?.amount) || 0;
                 }
+            }
+
+            const selectedPaymentOption = i.booking?.selectedPaymentOption;
+            //||"MEMBERSHIP_OFFLINE" ??
+            if (selectedPaymentOption === "MEMBERSHIP" && amount === 0 && findService) {
+                const amountFromServicePrice = Number(findService.payment?.fixed?.price?.value) || 0;
+                // console.log("serviceResponse",amountFromServicePrice);
+                amount = amountFromServicePrice;
             }
 
 
@@ -124,9 +150,10 @@ export async function queryExtendedBookings(startDate: Date, endDate: Date, stat
                 discount,
                 couponCodes: findOrder?.appliedDiscounts?.map(n => n.coupon?.code),
                 amountReceived,
-                selectedPaymentOption: i.booking?.selectedPaymentOption,
+                selectedPaymentOption,
                 email: i.booking?.contactDetails?.email,
                 order: config.includeOrder ? findOrder : undefined,
+                service: config.includeOrder ? findService : undefined,
                 item: config.includeItem ? i : undefined,
 
             }
