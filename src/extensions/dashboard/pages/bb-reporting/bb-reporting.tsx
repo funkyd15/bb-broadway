@@ -180,6 +180,7 @@ const DashboardPage: FC = () => {
       invoicesDateRange,//21
       pricingPlansDateRange,//22
 
+  
     ] = await Promise.all([
       sumAmountReceived('bookingsAnalytics', start, end), // 0
       sumAmountReceived('storesAnalytics', start, end), // 1
@@ -188,11 +189,11 @@ const DashboardPage: FC = () => {
       sumAmountReceived('pricingPlanAnalytics', start, end), // 4
 
       aggregateCollectionWithMembershipValue('bookingsAnalytics', start, end, 'teacher'), // 5
-      aggregateCollection('bookingsAnalytics', start, end, 'parseLocation'), // 6
-      aggregateCollection('bookingsAnalytics', start, end, 'serviceTitle'), // 7
-      aggregateCollection('bookingsAnalytics', start, end, 'serviceType'), // 8
-      aggregateCollection('bookingsAnalytics', start, end, 'term'), //9
-      aggregateCollection('bookingsAnalytics', start, end, 'termYear'), // 10
+      aggregateCollectionWithMembershipValue('bookingsAnalytics', start, end, 'parseLocation'), // 6
+      aggregateCollectionWithMembershipValue('bookingsAnalytics', start, end, 'serviceTitle'), // 7
+      aggregateCollectionWithMembershipValue('bookingsAnalytics', start, end, 'serviceType'), // 8
+      aggregateCollectionWithMembershipValue('bookingsAnalytics', start, end, 'term'), //9
+      aggregateCollectionWithMembershipValue('bookingsAnalytics', start, end, 'termYear'), // 10
       aggregateCollection('eventsAnalytics', start, end, 'eventTitle'), // 11
       aggregateCollection('invoicesAnalytics', start, end, 'title'), // 12
       aggregateCollection('pricingPlanAnalytics', start, end, 'planName'), // 13
@@ -240,8 +241,8 @@ const DashboardPage: FC = () => {
     setInvoicesDateRange(invoicesDateRange)//21
     setPricingPlansDateRange(pricingPlansDateRange)//22
 
-    console.log("Teacher Rows", teacherRows);
-
+    // console.log("Teacher Rows", teacherRows);
+    // console.log("taxYearRows", taxYearRows);
 
   }
 
@@ -403,6 +404,7 @@ const DashboardPage: FC = () => {
       render: (item) => formatGBP(item.amountReceivedSum),
       width: '250px',
     },
+    
   ];
   const taxYearColumns: TableColumn<any>[] = [
     {
@@ -417,6 +419,16 @@ const DashboardPage: FC = () => {
       render: (item) => formatGBP(item.amountReceivedSum),
       width: '250px',
     },
+    {
+      id: 'membershipBenefitValueSum',
+      title: `Membership Value (${formatGBP(sumRows(taxYearRows, 'membershipBenefitValueSum'))})`,
+      render: (item) => formatGBP(item.membershipBenefitValueSum),
+      width: '250px',
+      infoTooltipProps: {
+        content:
+          'The value of bookings from membership benefits',
+      }
+    },
   ];
   const taxQuarterColumns: TableColumn<any>[] = [
     {
@@ -430,6 +442,16 @@ const DashboardPage: FC = () => {
       title: `Amount Received (${formatGBP(sumRows(taxQuarterRows, 'amountReceivedSum'))})`,
       render: (item) => formatGBP(item.amountReceivedSum),
       width: '250px',
+    },
+    {
+      id: 'membershipBenefitValueSum',
+      title: `Membership Value (${formatGBP(sumRows(taxQuarterRows, 'membershipBenefitValueSum'))})`,
+      render: (item) => formatGBP(item.membershipBenefitValueSum),
+      width: '250px',
+      infoTooltipProps: {
+        content:
+          'The value of bookings from membership benefits',
+      }
     },
   ];
   const serviceTypeColumns: TableColumn<any>[] = [

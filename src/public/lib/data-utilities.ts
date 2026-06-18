@@ -129,21 +129,25 @@ export async function aggregateCollectionWithMembershipValue(
     endDate: string,
     group: string,
 ): Promise<any[]> {
-    let amountSumAggResults = await aggregateCollection(collection, startDate, endDate, group, 'amountReceived');
-    const membershipBenefitSumAggResults = await aggregateCollection(collection, startDate, endDate, group, 'membershipBenefitValue');
 
+    const [amountSumAggResults, membershipBenefitSumAggResults ] = await Promise.all(
+        [
+            aggregateCollection(collection, startDate, endDate, group, 'amountReceived'),
+            aggregateCollection(collection, startDate, endDate, group, 'membershipBenefitValue'),
+        ]
+    )
     // console.log("aggregateCollectionWithMembershipValue",membershipBenefitSumAggResults,amountSumAggResults);
 
     amountSumAggResults.forEach(a => {
         const findMembership = membershipBenefitSumAggResults.find(i => i._id === a._id);
         // console.log(findMembership);
-        
+
         const membershipBenefitValueSum = findMembership?.membershipBenefitValueSum || 0;
         a.membershipBenefitValueSum = membershipBenefitValueSum;
         a.amountAndMembershipValueSum = membershipBenefitValueSum + a.amountReceivedSum;
     });
 
-    
+
     return amountSumAggResults;
 
 }
@@ -156,9 +160,9 @@ export async function aggregateCollection(
     group?: string,
     sum?: string,
 ): Promise<any[]> {
-    if (!sum) {sum = 'amountReceived'};
+    if (!sum) { sum = 'amountReceived' };
     // console.log(sum);
-    
+
     let allItems = [];
     const filter = items
         .filter()
@@ -236,16 +240,24 @@ export async function aggregateAnalyticsCollections(
 ) {
     //take mutliple CMS, aggreate by tax year/quarter and reduce sum into a 'single combined' result
     const promises = collections.map(i =>
-        aggregateCollection(i, startDate, endDate, group)
+        // aggregateCollection(i, startDate, endDate, group)
+        aggregateCollectionWithMembershipValue(i, startDate, endDate, group)
     );
 
+
+
     const results = await Promise.all(promises);
+
+    console.log("aggregateAnalyticsCollections", results);
+
 
     const combineResults = combineByKey(
         results,
         group,
         "amountReceivedSum"
     );
+
+
     // console.log("aggregateAnalyticsCollections", combineResults);
 
     //descending
@@ -261,28 +273,60 @@ export async function aggregateAnalyticsCollections(
 
 type AnyRecord = Record<string, any>;
 
+// function combineByKey<T extends AnyRecord>(
+//     data: T[][],
+//     groupKey: keyof T,
+//     valueKey: keyof T
+// ) {
+//     const map = new Map<string, number>();
+
+//     for (const collection of data) {
+//         for (const item of collection) {
+//             const key = String(item[groupKey]);
+//             const value = Number(item[valueKey]) || 0;
+
+//             map.set(key, (map.get(key) ?? 0) + value);
+//         }
+//     }
+
+//     return Array.from(map.entries()).map(([key, sum]) => ({
+//         [groupKey]: key,
+//         [valueKey]: sum,
+//     })) as T[];
+// }
 function combineByKey<T extends AnyRecord>(
     data: T[][],
-    groupKey: keyof T,
-    valueKey: keyof T
-) {
-    const map = new Map<string, number>();
+    groupKey: keyof T
+): T[] {
+    const map = new Map<string, Partial<T>>();
 
     for (const collection of data) {
         for (const item of collection) {
             const key = String(item[groupKey]);
-            const value = Number(item[valueKey]) || 0;
 
-            map.set(key, (map.get(key) ?? 0) + value);
+            if (!map.has(key)) {
+                map.set(key, { ...item });
+                continue;
+            }
+
+            const existing = map.get(key)!;
+
+            for (const prop in item) {
+                if (prop === groupKey) continue;
+
+                const value = item[prop];
+
+                if (typeof value === "number") {
+                    existing[prop as keyof T] =
+                        (((existing[prop as keyof T] as number | undefined) ?? 0) +
+                            value) as T[keyof T];
+                }
+            }
         }
     }
 
-    return Array.from(map.entries()).map(([key, sum]) => ({
-        [groupKey]: key,
-        [valueKey]: sum,
-    })) as T[];
+    return Array.from(map.values()) as T[];
 }
-
 
 export async function getCreatedDateRange(collection: string): Promise<string> {
     try {
