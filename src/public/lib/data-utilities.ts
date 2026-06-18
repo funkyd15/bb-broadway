@@ -123,6 +123,30 @@ export async function sumAmountReceived(collection: string, startDate: string, e
 
 }
 
+export async function aggregateCollectionWithMembershipValue(
+    collection: string,
+    startDate: string,
+    endDate: string,
+    group: string,
+): Promise<any[]> {
+    let amountSumAggResults = await aggregateCollection(collection, startDate, endDate, group, 'amountReceived');
+    const membershipBenefitSumAggResults = await aggregateCollection(collection, startDate, endDate, group, 'membershipBenefitValue');
+
+    // console.log("aggregateCollectionWithMembershipValue",membershipBenefitSumAggResults,amountSumAggResults);
+
+    amountSumAggResults.forEach(a => {
+        const findMembership = membershipBenefitSumAggResults.find(i => i._id === a._id);
+        // console.log(findMembership);
+        
+        const membershipBenefitValueSum = findMembership?.membershipBenefitValueSum || 0;
+        a.membershipBenefitValueSum = membershipBenefitValueSum;
+        a.amountAndMembershipValueSum = membershipBenefitValueSum + a.amountReceivedSum;
+    });
+
+    
+    return amountSumAggResults;
+
+}
 
 
 export async function aggregateCollection(
@@ -130,7 +154,11 @@ export async function aggregateCollection(
     startDate: string,
     endDate: string,
     group?: string,
+    sum?: string,
 ): Promise<any[]> {
+    if (!sum) {sum = 'amountReceived'};
+    // console.log(sum);
+    
     let allItems = [];
     const filter = items
         .filter()
@@ -140,7 +168,7 @@ export async function aggregateCollection(
     let agg = items
         .aggregate(collection)
         .filter(filter)
-        .sum('amountReceived')
+        .sum(sum)
         .descending('amountReceivedSum')
         .limit(1000)
     if (group) {
@@ -159,10 +187,10 @@ export async function aggregateCollection(
 
     }
 
-
-
     return allItems as any[];
+
 }
+
 export async function aggregateBookingsServiceLocation(
     startDate: string,
     endDate: string,

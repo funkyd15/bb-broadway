@@ -116,6 +116,7 @@ function getTaxQuarter(date: Date, taxYearStart: number): number {
 }
 
 export function formatGBP(value: number) {
+    if(!value) {value = 0}; 
     return new Intl.NumberFormat('en-GB', {
         style: 'currency',
         currency: 'GBP',

@@ -30,13 +30,14 @@ export async function queryExtendedBookings(startDate: Date, endDate: Date, stat
             , cursorPaging: { limit: limit }
         }
         );
+        const orderItems = ordersResponse.orders;
 
         const serviceIds = [...new Set(items
             .map((i: any) => i.booking?.bookedEntity?.slot?.serviceId)
             .filter(Boolean))];
 
-        const orderItems = ordersResponse.orders;
 
+        //WARNING: Service will be the current price...not the historical price
         const serviceResponse = await services.queryServices({
             filter: {
                 "_id": { "$in": serviceIds },
@@ -60,6 +61,7 @@ export async function queryExtendedBookings(startDate: Date, endDate: Date, stat
             const paymentStatus = i.booking?.paymentStatus;
 
             let amount = i.order?.bookingPrice?.amount ? Number(i.order?.bookingPrice?.amount) : 0;
+            let membershipBenefitValue = 0;
             let discount = 0;
             if (findOrder) {
 
@@ -70,24 +72,30 @@ export async function queryExtendedBookings(startDate: Date, endDate: Date, stat
                 }
             }
 
-            const selectedPaymentOption = i.booking?.selectedPaymentOption;
-            //||"MEMBERSHIP_OFFLINE" ??
-            if (selectedPaymentOption === "MEMBERSHIP" && amount === 0 && findService) {
-                const amountFromServicePrice = Number(findService.payment?.fixed?.price?.value) || 0;
-                // console.log("serviceResponse",amountFromServicePrice);
-                amount = amountFromServicePrice;
-            }
-
-
+            
+            
             const singleClassFees = findOrder?.additionalFees?.filter(f => f.code === "single-class-fees") || [];
             const additionalFeesAmount = singleClassFees.length > 0 ? Number(singleClassFees[0].price?.amount) : 0
-
+            
             const amountReceived = paymentStatus === "REFUNDED" || paymentStatus === "NOT_PAID" ? 0 : amount + additionalFeesAmount - discount;
-
+            
             const createdDate = i.booking?._createdDate;
             const createdDateYYYYMMDD = createdDate.toISOString().split("T")[0];
-
+            
             const serviceTitle = i.booking?.bookedEntity?.title || "";
+            
+            const selectedPaymentOption = i.booking?.selectedPaymentOption;
+            
+            if (selectedPaymentOption === "MEMBERSHIP" ||selectedPaymentOption ==="MEMBERSHIP_OFFLINE"){
+                if(findService){
+                    membershipBenefitValue = Number(findService.payment?.fixed?.price?.value) || 0;
+                }
+                if(membershipBenefitValue===0){
+                    //default membershipBenefitValue = 10
+                    membershipBenefitValue = 10;
+                }
+         
+            }
 
             const serviceTypesMapping = [
                 { findText: "baby and me", output: "Baby and Me" },
@@ -150,6 +158,7 @@ export async function queryExtendedBookings(startDate: Date, endDate: Date, stat
                 discount,
                 couponCodes: findOrder?.appliedDiscounts?.map(n => n.coupon?.code),
                 amountReceived,
+                membershipBenefitValue,
                 selectedPaymentOption,
                 email: i.booking?.contactDetails?.email,
                 order: config.includeOrder ? findOrder : undefined,
@@ -194,7 +203,7 @@ export async function queryExtendedBookings(startDate: Date, endDate: Date, stat
         response = await extendedBookings.queryExtendedBookings(cursorQuery, options);
         updateStatus(page);
         await parseAndSaveBookings(response.extendedBookings);
-        console.log(page, response.pagingMetadata?.hasNext);
+        // console.log(page, response.pagingMetadata?.hasNext);
 
     }
 

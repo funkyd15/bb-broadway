@@ -27,7 +27,7 @@ import { queryEventsOrders } from "../../../../public/lib/events";
 import { queryInvoices } from "../../../../public/lib/invoices";
 import { YYYYMMDD, formatGBP, parseDateRange } from "../../../../public/lib/utilities";
 import MultiCheckbox from "../../../../public/lib/multiCheckbox";
-import { sumAmountReceived, aggregateCollection, aggregateAnalyticsCollections, aggregateBookingsServiceLocation, getCreatedDateRange } from "../../../../public/lib/data-utilities";
+import { sumAmountReceived, aggregateCollection, aggregateAnalyticsCollections, aggregateBookingsServiceLocation, getCreatedDateRange, aggregateCollectionWithMembershipValue } from "../../../../public/lib/data-utilities";
 import DatePickerWithShortcuts from "../../../../public/lib/datePicker";
 import { queryPricingPlans } from "../../../../public/lib/pricingPlans";
 import { exportToCSV } from "../../../../public/lib/csv";
@@ -187,7 +187,7 @@ const DashboardPage: FC = () => {
       sumAmountReceived('invoicesAnalytics', start, end), // 3
       sumAmountReceived('pricingPlanAnalytics', start, end), // 4
 
-      aggregateCollection('bookingsAnalytics', start, end, 'teacher'), // 5
+      aggregateCollectionWithMembershipValue('bookingsAnalytics', start, end, 'teacher'), // 5
       aggregateCollection('bookingsAnalytics', start, end, 'parseLocation'), // 6
       aggregateCollection('bookingsAnalytics', start, end, 'serviceTitle'), // 7
       aggregateCollection('bookingsAnalytics', start, end, 'serviceType'), // 8
@@ -240,11 +240,15 @@ const DashboardPage: FC = () => {
     setInvoicesDateRange(invoicesDateRange)//21
     setPricingPlansDateRange(pricingPlansDateRange)//22
 
+    console.log("Teacher Rows", teacherRows);
+
+
   }
 
-  function sumRows(rows: any[]) {
+
+  function sumRows(rows: any[], key: string) {
     const sumReceived = rows.reduce(
-      (accumulator, currentItem) => accumulator + currentItem.amountReceivedSum,
+      (accumulator, currentItem) => accumulator + currentItem[key] || 0,
       0,
     );
     return sumReceived;
@@ -323,6 +327,22 @@ const DashboardPage: FC = () => {
       render: (item) => formatGBP(item.amountReceivedSum),
       width: '250px',
     },
+    {
+      id: 'membershipBenefitValueSum',
+      title: `Membership Value (${formatGBP(sumRows(teacherRows, 'membershipBenefitValueSum'))})`,
+      render: (item) => formatGBP(item.membershipBenefitValueSum),
+      width: '250px',
+      infoTooltipProps: {
+        content:
+          'The value of bookings from membership benefits',
+      }
+    },
+    {
+      id: 'sumAmountAndValue',
+      title: `Sum (${formatGBP(sumRows(teacherRows, 'amountAndMembershipValueSum'))})`,
+      render: (item) => formatGBP(item.amountAndMembershipValueSum),
+      width: '250px',
+    },
   ];
 
 
@@ -393,7 +413,7 @@ const DashboardPage: FC = () => {
     },
     {
       id: 'amountReceivedSum',
-      title: `Amount Received (${formatGBP(sumRows(taxYearRows))})`,
+      title: `Amount Received (${formatGBP(sumRows(taxYearRows, 'amountReceivedSum'))})`,
       render: (item) => formatGBP(item.amountReceivedSum),
       width: '250px',
     },
@@ -407,7 +427,7 @@ const DashboardPage: FC = () => {
     },
     {
       id: 'amountReceivedSum',
-      title: `Amount Received (${formatGBP(sumRows(taxQuarterRows))})`,
+      title: `Amount Received (${formatGBP(sumRows(taxQuarterRows, 'amountReceivedSum'))})`,
       render: (item) => formatGBP(item.amountReceivedSum),
       width: '250px',
     },
@@ -580,7 +600,7 @@ const DashboardPage: FC = () => {
         />
 
         <Page.Content>
-   
+
           <Layout gap="SP4">
 
             <Cell span={12}>
@@ -624,12 +644,12 @@ const DashboardPage: FC = () => {
 
             <Cell span={12}>
               <Card>
- <Box padding="SP4" direction="vertical" gap="SP4">
+                <Box padding="SP4" direction="vertical" gap="SP4">
 
-                <Box direction="vertical" gap="SP1">
-                  <Text weight="bold">{status}</Text>
-                  <Text secondary>{subStatus}</Text>
-                </Box>
+                  <Box direction="vertical" gap="SP1">
+                    <Text weight="bold">{status}</Text>
+                    <Text secondary>{subStatus}</Text>
+                  </Box>
                 </Box>
 
 
@@ -638,22 +658,22 @@ const DashboardPage: FC = () => {
 
             <Cell span={12}>
               <Card>
- <Box padding="SP4" direction="vertical" gap="SP4">
+                <Box padding="SP4" direction="vertical" gap="SP4">
 
-                <Box
-                  direction="horizontal"
-                  gap="SP3"
-                  
-                  align="right"
-                >
-                  <Button onClick={runExportToCSV} disabled={running}>
-                    Export CSV
-                  </Button>
+                  <Box
+                    direction="horizontal"
+                    gap="SP3"
 
-                  <Button onClick={() => window.open(CMSlink, "_blank")}>
-                    Open CMS
-                  </Button>
-                </Box>
+                    align="right"
+                  >
+                    <Button onClick={runExportToCSV} disabled={running}>
+                      Export CSV
+                    </Button>
+
+                    <Button onClick={() => window.open(CMSlink, "_blank")}>
+                      Open CMS
+                    </Button>
+                  </Box>
                 </Box>
 
               </Card>
@@ -712,7 +732,7 @@ const DashboardPage: FC = () => {
                   </Box>
 
                   <Text weight="bold">
-                    Total: {formatGBP(sumRows(taxYearRows))}
+                    Total: {formatGBP(sumRows(taxYearRows, 'amountReceivedSum'))}
                   </Text>
                 </Box>
               </Card>
