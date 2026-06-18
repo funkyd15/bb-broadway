@@ -27,12 +27,14 @@ import { queryEventsOrders } from "../../../../public/lib/events";
 import { queryInvoices } from "../../../../public/lib/invoices";
 import { YYYYMMDD, formatGBP, parseDateRange } from "../../../../public/lib/utilities";
 import MultiCheckbox from "../../../../public/lib/multiCheckbox";
-import { sumAmountReceived, aggregateCollection, aggregateAnalyticsCollections, aggregateBookingsServiceLocation } from "../../../../public/lib/data-utilities";
+import { sumAmountReceived, aggregateCollection, aggregateAnalyticsCollections, aggregateBookingsServiceLocation, getCreatedDateRange } from "../../../../public/lib/data-utilities";
 import DatePickerWithShortcuts from "../../../../public/lib/datePicker";
 import { queryPricingPlans } from "../../../../public/lib/pricingPlans";
 import { exportToCSV } from "../../../../public/lib/csv";
 
 const w1 = "240px";
+
+const CMSlink = "https://manage.wix.com/dashboard/0210b701-c715-482e-bdcf-2e8185181308/wix-cms/folders/53822ca6-21cc-415e-acfe-ec828e1e60fe?apps-override=aad90d5f-bb9e-4dc3-b308-a33ff43ec1da";
 
 const DashboardPage: FC = () => {
   const analyticsCollections = [
@@ -84,11 +86,17 @@ const DashboardPage: FC = () => {
   const [endDate, setEndDate] = useState<Date>(endOfDay(new Date("31 March 2026")));
   const [status, setStatus] = useState<String>("Ready");
   const [subStatus, setSubStatus] = useState<String>("Ready");
-  const [dateRange, setDateRange] = useState<String>("Ready");
+  const [dateRange, setDateRange] = useState<String>("");
+
+  const [bookingsDateRange, setBookingsDateRange] = useState<String>("Hello");
+  const [storesDateRange, setStoresDateRange] = useState<String>("");
+  const [eventsDateRange, setEventsDateRange] = useState<String>("");
+  const [invoicesDateRange, setInvoicesDateRange] = useState<String>("");
+  const [pricingPlansDateRange, setPricingPlansDateRange] = useState<String>("");
 
   const [apps, setApps] = useState<string[]>([
     // 'bookings',
-    'stores',
+    // 'stores',
     // 'events',
     // 'invoices',
     // 'pricingPlans',
@@ -112,6 +120,7 @@ const DashboardPage: FC = () => {
   const [taxYearRows, setTaxYearRows] = useState<any[]>([]);
   const [taxQuarterRows, setTaxQuarterRows] = useState<any[]>([]);
   const [serviceTypeLocationRows, setServiceTypeLocationRows] = useState<any[]>([]);
+  const [storesRows, setStoresRows] = useState<any[]>([]);
 
   useEffect(() => {
     setDateRange(parseDateRange(startDate, endDate));
@@ -139,7 +148,7 @@ const DashboardPage: FC = () => {
     const start = YYYYMMDD(startDate);
     const end = YYYYMMDD(endDate);
 
-    console.log("start:end", start, end);
+    // console.log("start:end", start, end);
 
 
     const [
@@ -162,7 +171,14 @@ const DashboardPage: FC = () => {
       taxYearRows,      // 14
       taxQuarterRows,   // 15
 
-      serviceTypeLocationRows //16
+      serviceTypeLocationRows, //16
+      storesRows, //17
+
+      bookingsDateRange,//18
+      storesDateRange,//19
+      eventsDateRange,//20
+      invoicesDateRange,//21
+      pricingPlansDateRange,//22
 
     ] = await Promise.all([
       sumAmountReceived('bookingsAnalytics', start, end), // 0
@@ -185,6 +201,15 @@ const DashboardPage: FC = () => {
       aggregateAnalyticsCollections(analyticsCollections, start, end, 'taxQuarter'), // 15
 
       aggregateBookingsServiceLocation(start, end), // 16
+
+      aggregateCollection('storesAnalytics', start, end, 'name'), // 17
+
+      getCreatedDateRange('bookingsAnalytics'), //18
+      getCreatedDateRange('storesAnalytics'),//19
+      getCreatedDateRange('eventsAnalytics'),//20
+      getCreatedDateRange('invoicesAnalytics'),//21
+      getCreatedDateRange('pricingPlanAnalytics'),//22
+
     ]);
 
     setSumBookings(sumBookings); // 0
@@ -207,6 +232,14 @@ const DashboardPage: FC = () => {
     setTaxQuarterRows(taxQuarterRows); // 15
 
     setServiceTypeLocationRows(serviceTypeLocationRows); // 16
+    setStoresRows(storesRows); // 17
+
+    setBookingsDateRange(bookingsDateRange) //18
+    setStoresDateRange(storesDateRange)//19
+    setEventsDateRange(eventsDateRange)//20
+    setInvoicesDateRange(invoicesDateRange)//21
+    setPricingPlansDateRange(pricingPlansDateRange)//22
+
   }
 
   function sumRows(rows: any[]) {
@@ -437,6 +470,20 @@ const DashboardPage: FC = () => {
       width: '250px',
     },
   ];
+  const storesColumns: TableColumn<any>[] = [
+    {
+      id: 'name',
+      title: `Stores (${storesRows.length})`,
+      render: (item) => item.name,
+      width: '250px',
+    },
+    {
+      id: 'amountReceivedSum',
+      title: `Amount Received (${formatGBP(sumStores)})`,
+      render: (item) => formatGBP(item.amountReceivedSum),
+      width: '250px',
+    },
+  ];
 
   const serviceTypeLocationColumns: TableColumn<any>[] = [
     {
@@ -459,32 +506,70 @@ const DashboardPage: FC = () => {
     },
   ];
 
+  const taxTables = [
+    { title: `Tax Years`, rows: taxYearRows, columns: taxYearColumns },
+    { title: `Tax Quarters`, rows: taxQuarterRows, columns: taxQuarterColumns, accordian: true },
+  ]
 
-  const tables = [
-    { rows: taxYearRows, columns: taxYearColumns },
-    { rows: taxQuarterRows, columns: taxQuarterColumns },
-    { rows: pricingPlanRows, columns: pricingPlanColumns },
-    { rows: serviceTypeLocationRows, columns: serviceTypeLocationColumns },
-    { rows: teacherRows, columns: teacherColumns },
-    { rows: serviceTypeRows, columns: serviceTypeColumns },
-    { rows: termRows, columns: termColumns },
-    { rows: termYearRows, columns: termYearColumns },
-    { rows: serviceRows, columns: serviceColumns },
-    { rows: locationRows, columns: locationColumns },
-    { rows: eventRows, columns: eventColumns },
-    { rows: invoiceRows, columns: invoiceColumns },
-  ];
+  const bookingsTables = [
+    { title: `Teachers`, rows: teacherRows, columns: teacherColumns, accordian: true },
+    { title: `Locations`, rows: locationRows, columns: locationColumns, accordian: true },
+    { title: `Service Type`, rows: serviceTypeRows, columns: serviceTypeColumns, accordian: true },
+    { title: `Service Type & Location`, rows: serviceTypeLocationRows, columns: serviceTypeLocationColumns, accordian: true },
+    { title: `Service`, rows: serviceRows, columns: serviceColumns, accordian: true },
+    { title: `Term`, rows: termRows, columns: termColumns, accordian: true },
+    { title: `Term & Year`, rows: termYearRows, columns: termYearColumns, accordian: true },
+  ]
 
-  const mapTables = (table, index: number) => (
-    <Cell span={12} key={index}>
+  const eventTables = [
+    { title: `Events`, rows: eventRows, columns: eventColumns, accordian: true },
+  ]
+
+  const storesTables = [
+    { title: `Stores`, rows: storesRows, columns: storesColumns, accordian: true },
+  ]
+
+  const pricingPlanTables = [
+    { title: `Pricing Plans`, rows: pricingPlanRows, columns: pricingPlanColumns, accordian: true },
+  ]
+  const invoiceTables = [
+    { title: `Invoices`, rows: invoiceRows, columns: invoiceColumns, accordian: true },
+  ]
+
+
+  const mapTables = (table: any, index: number) => {
+    const content = table.accordian ? (
+      <Accordion
+        items={[
+          accordionItemBuilder({
+            title: table.title,
+            children: (
+              <Card>
+                <Table
+                  data={table.rows}
+                  columns={table.columns}
+                />
+              </Card>
+            ),
+          }),
+
+        ]}
+      />
+    ) : (
       <Card>
         <Table
           data={table.rows}
           columns={table.columns}
         />
       </Card>
-    </Cell>
-  );
+    );
+
+    return (
+      <Cell span={12} key={index}>
+        {content}
+      </Cell>
+    );
+  };
 
   return (
     <WixDesignSystemProvider>
@@ -495,7 +580,7 @@ const DashboardPage: FC = () => {
         />
 
         <Page.Content>
-          <Page.Section > </Page.Section>
+   
           <Layout gap="SP4">
 
             <Cell span={12}>
@@ -509,11 +594,11 @@ const DashboardPage: FC = () => {
                           <Box padding="SP3">
                             <MultiCheckbox
                               items={[
-                                { label: 'Bookings', value: 'bookings' },
-                                { label: 'Stores', value: 'stores' },
-                                { label: 'Events', value: 'events' },
-                                { label: 'Invoices', value: 'invoices' },
-                                { label: 'Pricing Plans', value: 'pricingPlans' },
+                                { label: `Bookings (${bookingsDateRange})`, value: 'bookings' },
+                                { label: `Stores (${storesDateRange})`, value: 'stores' },
+                                { label: `Events (${eventsDateRange})`, value: 'events' },
+                                { label: `Invoices (${invoicesDateRange})`, value: 'invoices' },
+                                { label: `Pricing Plans (${pricingPlansDateRange})`, value: 'pricingPlans' },
                               ]}
                               selectedValues={apps}
                               onChange={setApps}
@@ -539,21 +624,38 @@ const DashboardPage: FC = () => {
 
             <Cell span={12}>
               <Card>
-                <Box padding="SP4" direction="horizontal" align="center">
-                  <Box direction="vertical" gap="SP1">
-                    <Text weight="bold">{status}</Text>
-                    <Text secondary>{subStatus}</Text>
-                  </Box>
+ <Box padding="SP4" direction="vertical" gap="SP4">
 
-                  <Box width="100%" />
+                <Box direction="vertical" gap="SP1">
+                  <Text weight="bold">{status}</Text>
+                  <Text secondary>{subStatus}</Text>
+                </Box>
+                </Box>
 
-                  <Button
-                    onClick={runExportToCSV}
-                    disabled={running}
-                  >
+
+              </Card>
+            </Cell>
+
+            <Cell span={12}>
+              <Card>
+ <Box padding="SP4" direction="vertical" gap="SP4">
+
+                <Box
+                  direction="horizontal"
+                  gap="SP3"
+                  
+                  align="right"
+                >
+                  <Button onClick={runExportToCSV} disabled={running}>
                     Export CSV
                   </Button>
+
+                  <Button onClick={() => window.open(CMSlink, "_blank")}>
+                    Open CMS
+                  </Button>
                 </Box>
+                </Box>
+
               </Card>
             </Cell>
 
@@ -595,7 +697,6 @@ const DashboardPage: FC = () => {
                 <Box padding="SP3" direction="vertical" gap="SP2">
                   <Heading size="medium" >{dateRange}</Heading>
 
-
                   <Box paddingTop="SP1" paddingBottom="SP1">
                     <Divider />
                   </Box>
@@ -617,9 +718,70 @@ const DashboardPage: FC = () => {
               </Card>
             </Cell>
 
-            <>
-              {tables.map(mapTables)}
-            </>
+            <Cell span={12}>
+              <Card>
+                <Box padding="SP4" direction="vertical" gap="SP4">
+                  <>
+                    {taxTables.map(mapTables)}
+                  </>
+                </Box>
+              </Card>
+            </Cell>
+
+            <Cell span={12}>
+              <Card>
+                <Box padding="SP3" direction="vertical" gap="SP2">
+
+                  <Heading size="medium" >Bookings</Heading>
+                  <Box padding="SP4" direction="vertical" gap="SP4">
+                    <>
+                      {bookingsTables.map(mapTables)}
+                    </>
+                  </Box>
+                </Box>
+              </Card>
+            </Cell>
+
+            <Cell span={12}>
+              <Card>
+                <Box padding="SP4" direction="vertical" gap="SP4">
+                  <>
+                    {eventTables.map(mapTables)}
+                  </>
+                </Box>
+              </Card>
+            </Cell>
+
+            <Cell span={12}>
+              <Card>
+                <Box padding="SP4" direction="vertical" gap="SP4">
+                  <>
+                    {invoiceTables.map(mapTables)}
+                  </>
+                </Box>
+              </Card>
+            </Cell>
+
+            <Cell span={12}>
+              <Card>
+                <Box padding="SP4" direction="vertical" gap="SP4">
+                  <>
+                    {storesTables.map(mapTables)}
+                  </>
+                </Box>
+              </Card>
+            </Cell>
+
+            <Cell span={12}>
+              <Card>
+                <Box padding="SP4" direction="vertical" gap="SP4">
+                  <>
+                    {pricingPlanTables.map(mapTables)}
+                  </>
+                </Box>
+              </Card>
+            </Cell>
+
 
           </Layout>
 

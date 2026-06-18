@@ -2,7 +2,7 @@
 import { orders } from "@wix/ecom";
 import { bulkSaveSets } from "./data-utilities";
 import { wixAppIds } from "./utilities";
-import { getUKTaxYear, TaxYearFormat ,config} from "./utilities";
+import { getUKTaxYear, TaxYearFormat, config } from "./utilities";
 
 const anaylticsCollection = "storesAnalytics";
 const limit = 100;
@@ -10,71 +10,114 @@ const limit = 100;
 export async function queryStoresOrders(startDate: Date, endDate: Date, statusState: Function) {
     statusState("Running queryStoresOrders...");
 
-    let allItems = [];
+    let allItems: any[] = [];
 
     function updateStatus(page?: Number) {
         statusState(`Page: ${page}, (${allItems.length})`);
     }
 
     async function parseAndSaveOrders(items: orders.Order[]) {
-        let parsedItems = [];
-        items.forEach(i => {
+
+        items.forEach((order: orders.Order) => {
+            let parsedItems = [];
             try {
-
-                const storesLineItems = i.lineItems?.filter(n => n.catalogReference?.appId === wixAppIds.wixStores);
-                const bookingsLineItems = i.lineItems?.filter(n => n.catalogReference?.appId === wixAppIds.wixBookings);
-                const couponCodes = i.appliedDiscounts ? i.appliedDiscounts?.map(i => i.coupon?.code) : [];
-
-                const createdDate = i._createdDate;
+                const orderId = order._id;
+                const orderNumber = order.number;
+                const createdDate = order._createdDate;
                 const createdDateYYYYMMDD = createdDate.toISOString().split("T")[0];
 
-                if (storesLineItems && storesLineItems?.length > 0) {
+                const storesLineItems = order.lineItems?.filter(n => n.catalogReference?.appId === wixAppIds.wixStores) || [];
+                const bookingsLineItems = order.lineItems?.filter(n => n.catalogReference?.appId === wixAppIds.wixBookings) || [];
+                const couponCodes = order.appliedDiscounts ? order.appliedDiscounts?.map(i => i.coupon?.code) : [];
+
                 //after discount
                 const storesLineItemsAmount = storesLineItems.reduce(
                     (accumulator, currentItem) => accumulator + Number(currentItem.lineItemPrice?.amount || 0),
                     0,
                 );
                 const storesLineItemsDiscount = storesLineItems.reduce(
-                    (accumulator, currentItem) => accumulator + Number(currentItem.totalDiscount?.amount|| 0),
+                    (accumulator, currentItem) => accumulator + Number(currentItem.totalDiscount?.amount || 0),
                     0,
                 );
 
-                const shippingAmount = Number(i.priceSummary?.shipping?.amount) || 0;
-                const refundedAmount = Number(i.balanceSummary?.refunded?.amount) || 0;
+                const shippingAmount = Number(order.priceSummary?.shipping?.amount) || 0;
+                const orderAmountRefunded = Number(order.balanceSummary?.refunded?.amount) || 0;
+                const reduceRefundQuantity  = storesLineItems.reduce(
+                    (accumulator, currentItem) => accumulator + Number(currentItem.refundQuantity || 0),
+                    0,
+                );
+                const orderAmountReceived = shippingAmount - (order.paymentStatus === "PARTIALLY_REFUNDED" && reduceRefundQuantity===0 ? orderAmountRefunded : 0);
 
-                const amountReceived = shippingAmount + storesLineItemsAmount - refundedAmount;
-
-                const parsedItem = {
-                    _id: i._id,
+                const rootParsedItem = {
                     createdDate: createdDateYYYYMMDD,
                     taxYear: getUKTaxYear(createdDate, TaxYearFormat.Year),
                     taxQuarter: getUKTaxYear(createdDate, TaxYearFormat.Quarter),
                     taxMonth: getUKTaxYear(createdDate, TaxYearFormat.Month),
-                    orderNumber: i.number,
-                    link: `https://manage.wix.com/dashboard/0210b701-c715-482e-bdcf-2e8185181308/ecom-platform/order-details/${i._id}`,
+                    orderNumber: order.number,
+                    link: `https://manage.wix.com/dashboard/0210b701-c715-482e-bdcf-2e8185181308/ecom-platform/order-details/${order._id}`,
+                    paymentStatus: order.paymentStatus,
+                    channelInfoType: order.channelInfo?.type,
+                    email: order.buyerInfo?.email,
+                }
+
+                const parsedOrderItem = {
+                    _id: orderId,
+                    type: "ORDER",
+                    name: "ORDER",
                     couponCodes,
-                    paymentStatus: i.paymentStatus,
-                    channelInfoType: i.channelInfo?.type,
-                    email: i.buyerInfo?.email,
                     storesLineItemsAmount,
                     storesLineItemsDiscount,
                     shippingAmount,
-                    additionalFees: Number(i.priceSummary?.totalAdditionalFees?.amount),
-                    amountReceived: amountReceived,
-                    item: config.includeItem ? i : undefined,
-                    storesLineItems:config.includeItem ?storesLineItems:undefined,
-                    bookingsLineItems:config.includeItem ?bookingsLineItems:undefined,
+                    amountReceived: orderAmountReceived,
+                    orderAdditionalFees: Number(order.priceSummary?.totalAdditionalFees?.amount),
+                    orderAmountRefunded,
+                    // item: config.includeItem ? order : undefined,
+                    item:  order,
+                    storesLineItems: config.includeItem ? storesLineItems : undefined,
+                    bookingsLineItems: config.includeItem ? bookingsLineItems : undefined,
                 }
-                parsedItems.push(parsedItem);
+
+                if (storesLineItems && storesLineItems?.length > 0) {
+                    parsedItems.push({ ...rootParsedItem, ...parsedOrderItem });
+                    //root order: shipping + non booking fees?
+                    storesLineItems.forEach((lineItem, index) => {
+                        const _id = `${orderId}-${lineItem._id}`;
+                        const lineItemIndex = index.toString().padStart(4, "0");
+                        const lineItemOrderIndex = `${orderNumber}-${lineItemIndex}`;
+                        const lineItemAmount = Number(lineItem.lineItemPrice?.amount || 0);
+                        const lineItemPrice = Number(lineItem.price?.amount || 0);
+                        const lineItemDiscount = Number(lineItem.totalDiscount?.amount || 0);
+                        let lineItemAmountRefunded = 0;
+                        if (lineItem.refundQuantity) {
+                            lineItemAmountRefunded = lineItemPrice * lineItem.refundQuantity;
+                        }
+                        const lineItemAmountReceived = lineItemAmount - lineItemAmountRefunded;
+
+                        let parsedLineItem = {
+                            _id,
+                            name: lineItem.productName?.original,
+                            lineItemId: lineItem._id,
+                            lineItemOrderIndex,
+                            type: "LINE_ITEM",
+                            amountReceived: lineItemAmountReceived,
+                            lineItem,
+                            lineItemAmount,
+                            lineItemDiscount,
+                            lineItemAmountRefunded,
+                        }
+                        parsedItems.push({ ...rootParsedItem, ...parsedLineItem });
+
+                    });
+
                 }
             } catch (error) {
-                console.error("i error", error, i);
+                console.error("order error", error, order);
 
             }
-            
+
+            allItems.push(...parsedItems);
         });
 
-        allItems.push(...parsedItems);
     }
 
     const filter = {
@@ -109,9 +152,12 @@ export async function queryStoresOrders(startDate: Date, endDate: Date, statusSt
 
     }
 
-    statusState(`Saving: ${allItems.length}`)
+    statusState(`Saving: ${allItems.length}`);
 
-    await bulkSaveSets(allItems, anaylticsCollection,statusState);
+    console.log("Stores All Items", allItems);
+
+
+    await bulkSaveSets(allItems, anaylticsCollection, statusState);
 
     return allItems;
 

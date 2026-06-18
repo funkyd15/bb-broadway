@@ -1,6 +1,6 @@
 export const config = {
-    includeOrder: true,
-    includeItem: true,
+    includeOrder: false,
+    includeItem: false,
 };
 
 export const wixAppIds = {
@@ -86,6 +86,20 @@ export function getUKTaxYear(
     }
 }
 
+//Index, Month, Quarter
+// 0	1	Jan	Q4
+// 1	2	Feb	Q4
+// 2	3	Mar	Q4
+// 3	4	Apr	Q1
+// 4	5	May	Q1
+// 5	6	Jun	Q1
+// 6	7	Jul	Q2
+// 7	8	Aug	Q2
+// 8	9	Sep	Q2
+// 9	10	Oct	Q3
+// 10	11	Nov	Q3
+// 11	12	Dec	Q3
+
 function getTaxQuarter(date: Date, taxYearStart: number): number {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
@@ -126,15 +140,15 @@ export function parseDateRange(startDate:Date, endDate:Date) {
       return `FY: ${sy}/${ey}`;
     }
 
-    return `FY: ${sy} to ${ey}`;
+    return `(FY): ${sy} to ${ey}`;
   }
 
   // Quarters
   const quarters = [
-    { q: 1, startM: 0, startD: 1, endM: 2, endD: 31 },
-    { q: 2, startM: 3, startD: 1, endM: 5, endD: 30 },
-    { q: 3, startM: 6, startD: 1, endM: 8, endD: 30 },
-    { q: 4, startM: 9, startD: 1, endM: 11, endD: 31 },
+    { q: 4, startM: 0, startD: 1, endM: 2, endD: 31 },
+    { q: 1, startM: 3, startD: 1, endM: 5, endD: 30 },
+    { q: 2, startM: 6, startD: 1, endM: 8, endD: 30 },
+    { q: 3, startM: 9, startD: 1, endM: 11, endD: 31 },
   ];
 
   for (const q of quarters) {
@@ -149,6 +163,32 @@ export function parseDateRange(startDate:Date, endDate:Date) {
     }
   }
 
+   // Multiple quarters
+  const startQuarter = quarters.find(
+    q =>
+      sm === q.startM &&
+      sd === q.startD
+  );
+
+  const endQuarter = quarters.find(
+    q =>
+      em === q.endM &&
+      ed === q.endD
+  );
+
+  if (startQuarter && endQuarter) {
+    return `Q${startQuarter.q}: ${sy} to Q${endQuarter.q}: ${ey}`;
+  }
+
   // Fallback
-  return `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`;
+  return `${formatUKDate(start)} - ${formatUKDate(end)}`;
+}
+
+function formatUKDate(date:Date) {
+  return [
+    date.toLocaleDateString('en-GB', { weekday: 'short' }),
+    date.toLocaleDateString('en-GB', { day: '2-digit' }),
+    date.toLocaleDateString('en-GB', { month: 'short' }),
+    date.toLocaleDateString('en-GB', { year: 'numeric' })
+  ].join(' ');
 }

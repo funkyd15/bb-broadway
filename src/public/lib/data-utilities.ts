@@ -1,4 +1,5 @@
 import { items } from '@wix/data';
+import { YYYYMMDD } from './utilities';
 
 export async function bulkSaveSets(array: any[], collection: string, statusState: Function) {
     let bulkSets = [];
@@ -116,7 +117,7 @@ export async function sumAmountReceived(collection: string, startDate: string, e
         .descending('amountReceivedSum')
         .run();
 
-    console.log("sumAmountReceived", results);
+    // console.log("sumAmountReceived", results);
 
     return results.items[0]?.amountReceivedSum || 0;
 
@@ -252,4 +253,26 @@ function combineByKey<T extends AnyRecord>(
         [groupKey]: key,
         [valueKey]: sum,
     })) as T[];
+}
+
+
+export async function getCreatedDateRange(collection: string): Promise<string> {
+    try {
+        const [oldestResult, newestResult] = await Promise.all([
+            items.query(collection).ascending('createdDate').limit(1).find(),
+            items.query(collection).descending('createdDate').limit(1).find(),
+        ]);
+
+        const oldestDate = oldestResult.items?.[0]?.createdDate;
+        const newestDate = newestResult.items?.[0]?.createdDate;
+
+        if (!oldestDate || !newestDate) {
+            return '';
+        }
+
+        return `${oldestDate} - ${newestDate}`;
+    } catch (error) {
+        console.error(`Failed to get date range for ${collection}`, error);
+        return 'err';
+    }
 }

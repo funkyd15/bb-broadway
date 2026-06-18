@@ -29,6 +29,21 @@ export default function DatePickerWithShortcuts({
         if (month === 3 && day === 1) return true
         if (month === 2 && day === 31) return true
     }
+
+    //Index, Month, Quarter
+    // 0	1	Jan	Q4
+    // 1	2	Feb	Q4
+    // 2	3	Mar	Q4
+    // 3	4	Apr	Q1
+    // 4	5	May	Q1
+    // 5	6	Jun	Q1
+    // 6	7	Jul	Q2
+    // 7	8	Aug	Q2
+    // 8	9	Sep	Q2
+    // 9	10	Oct	Q3
+    // 10	11	Nov	Q3
+    // 11	12	Dec	Q3
+
     function isQ(date: Date) {
         const month = date.getMonth(); // 0-based
         const day = date.getDate();
@@ -49,11 +64,11 @@ export default function DatePickerWithShortcuts({
         onChange(updater(new Date(value)));
     };
 
-  const addDays = (date: Date, days: number): Date => {
-    const d = new Date(date);
-    d.setDate(d.getDate() + days);
-    return d;
-};
+    const addDays = (date: Date, days: number): Date => {
+        const d = new Date(date);
+        d.setDate(d.getDate() + days);
+        return d;
+    };
     const addMonths = (date: Date, months: number): Date => {
         const d = new Date(date);
         d.setMonth(d.getMonth() + months);
@@ -247,7 +262,7 @@ export default function DatePickerWithShortcuts({
                     </Button>
                 </Box>
 
-                 <Button
+                <Button
                     size="tiny"
                     skin="light"
                     onClick={() => updateDate((d) => addDays(d, 1))}
@@ -257,7 +272,7 @@ export default function DatePickerWithShortcuts({
                     +D
                 </Button>
 
-                    <Button
+                <Button
                     size="tiny"
                     skin="light"
                     onClick={() => updateDate((d) => addDays(d, 7))}
