@@ -1,6 +1,6 @@
 export const config = {
-    includeOrder: false,
-    includeItem: false,
+    includeOrder: true,
+    includeItem: true,
 };
 
 export const wixAppIds = {

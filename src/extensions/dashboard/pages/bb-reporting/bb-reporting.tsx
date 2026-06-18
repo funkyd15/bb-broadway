@@ -27,7 +27,7 @@ import { queryEventsOrders } from "../../../../public/lib/events";
 import { queryInvoices } from "../../../../public/lib/invoices";
 import { YYYYMMDD, formatGBP, parseDateRange } from "../../../../public/lib/utilities";
 import MultiCheckbox from "../../../../public/lib/multiCheckbox";
-import { sumAmountReceived, aggregateCollection, aggregateAnalyticsCollections } from "../../../../public/lib/data-utilities";
+import { sumAmountReceived, aggregateCollection, aggregateAnalyticsCollections, aggregateBookingsServiceLocation } from "../../../../public/lib/data-utilities";
 import DatePickerWithShortcuts from "../../../../public/lib/datePicker";
 import { queryPricingPlans } from "../../../../public/lib/pricingPlans";
 import { exportToCSV } from "../../../../public/lib/csv";
@@ -87,11 +87,11 @@ const DashboardPage: FC = () => {
   const [dateRange, setDateRange] = useState<String>("Ready");
 
   const [apps, setApps] = useState<string[]>([
-    'bookings',
+    // 'bookings',
     'stores',
-    'events',
-    'invoices',
-    'pricingPlans',
+    // 'events',
+    // 'invoices',
+    // 'pricingPlans',
   ]);
 
   const [sumBookings, setSumBookings] = useState<Number>(0);
@@ -111,6 +111,7 @@ const DashboardPage: FC = () => {
   const [termYearRows, setTermYearRows] = useState<any[]>([]);
   const [taxYearRows, setTaxYearRows] = useState<any[]>([]);
   const [taxQuarterRows, setTaxQuarterRows] = useState<any[]>([]);
+  const [serviceTypeLocationRows, setServiceTypeLocationRows] = useState<any[]>([]);
 
   useEffect(() => {
     setDateRange(parseDateRange(startDate, endDate));
@@ -125,15 +126,15 @@ const DashboardPage: FC = () => {
     return () => clearTimeout(timeout);
   }, [startDate, endDate]);
   useEffect(() => {
-    
-      if (!running) {
-  setStatus("Ready");
+
+    if (!running) {
+      setStatus("Ready");
       setSubStatus("");
-      }
-  
+    }
+
   }, [running]);
 
-  
+
   async function runSums() {
     const start = YYYYMMDD(startDate);
     const end = YYYYMMDD(endDate);
@@ -160,6 +161,9 @@ const DashboardPage: FC = () => {
 
       taxYearRows,      // 14
       taxQuarterRows,   // 15
+
+      serviceTypeLocationRows //16
+
     ] = await Promise.all([
       sumAmountReceived('bookingsAnalytics', start, end), // 0
       sumAmountReceived('storesAnalytics', start, end), // 1
@@ -179,6 +183,8 @@ const DashboardPage: FC = () => {
 
       aggregateAnalyticsCollections(analyticsCollections, start, end, 'taxYear'), // 14
       aggregateAnalyticsCollections(analyticsCollections, start, end, 'taxQuarter'), // 15
+
+      aggregateBookingsServiceLocation(start, end), // 16
     ]);
 
     setSumBookings(sumBookings); // 0
@@ -199,6 +205,8 @@ const DashboardPage: FC = () => {
 
     setTaxYearRows(taxYearRows); // 14
     setTaxQuarterRows(taxQuarterRows); // 15
+
+    setServiceTypeLocationRows(serviceTypeLocationRows); // 16
   }
 
   function sumRows(rows: any[]) {
@@ -214,10 +222,10 @@ const DashboardPage: FC = () => {
     setStatus("Exporting...");
     try {
       await exportToCSV(startDate, endDate, setSubStatus);
-      
+
     } catch (error) {
       console.error(error);
-      
+
     }
     setStatus("Complete");
     setRunning(false);
@@ -260,9 +268,9 @@ const DashboardPage: FC = () => {
     }
 
     setSubStatus("Running Aggregate");
-    
+
     await runSums();
-    
+
     setStatus("Completed");
     setSubStatus("");
 
@@ -414,10 +422,11 @@ const DashboardPage: FC = () => {
       width: '250px',
     },
   ];
+
   const pricingPlanColumns: TableColumn<any>[] = [
     {
-      id: 'title',
-      title: `Pricing Plans (${pricingPlanRows.length})`,
+      id: 'planName',
+      title: `Pricing Plans (${invoiceRows.length})`,
       render: (item) => item.planName,
       width: '250px',
     },
@@ -429,7 +438,53 @@ const DashboardPage: FC = () => {
     },
   ];
 
+  const serviceTypeLocationColumns: TableColumn<any>[] = [
+    {
+      id: 'serviceType',
+      title: `Service Type (${serviceTypeLocationRows.length})`,
+      render: (item) => item.serviceType,
+      width: '250px',
+    },
+    {
+      id: 'parseLocation',
+      title: `Location`,
+      render: (item) => item.parseLocation,
+      width: '250px',
+    },
+    {
+      id: 'amountReceivedSum',
+      title: `Amount Received`,
+      render: (item) => formatGBP(item.amountReceivedSum),
+      width: '250px',
+    },
+  ];
 
+
+  const tables = [
+    { rows: taxYearRows, columns: taxYearColumns },
+    { rows: taxQuarterRows, columns: taxQuarterColumns },
+    { rows: pricingPlanRows, columns: pricingPlanColumns },
+    { rows: serviceTypeLocationRows, columns: serviceTypeLocationColumns },
+    { rows: teacherRows, columns: teacherColumns },
+    { rows: serviceTypeRows, columns: serviceTypeColumns },
+    { rows: termRows, columns: termColumns },
+    { rows: termYearRows, columns: termYearColumns },
+    { rows: serviceRows, columns: serviceColumns },
+    { rows: locationRows, columns: locationColumns },
+    { rows: eventRows, columns: eventColumns },
+    { rows: invoiceRows, columns: invoiceColumns },
+  ];
+
+  const mapTables = (table, index: number) => (
+    <Cell span={12} key={index}>
+      <Card>
+        <Table
+          data={table.rows}
+          columns={table.columns}
+        />
+      </Card>
+    </Cell>
+  );
 
   return (
     <WixDesignSystemProvider>
@@ -562,122 +617,9 @@ const DashboardPage: FC = () => {
               </Card>
             </Cell>
 
-
-
-
-
-            <Cell span={12}>
-              <Card>
-                <Table
-                  data={taxYearRows}
-                  columns={taxYearColumns}
-                />
-
-              </Card>
-            </Cell>
-            <Cell span={12}>
-              <Card>
-                <Table
-                  data={taxQuarterRows}
-                  columns={taxQuarterColumns}
-                />
-
-              </Card>
-            </Cell>
-
-            <Cell span={12}>
-              <Card>
-                <Table
-                  data={pricingPlanRows}
-                  columns={pricingPlanColumns}
-                />
-
-              </Card>
-            </Cell>
-
-            <Cell span={12}>
-              <Card>
-                <Table
-                  data={teacherRows}
-                  columns={teacherColumns}
-                />
-
-              </Card>
-            </Cell>
-
-
-            <Cell span={12}>
-              <Card>
-                <Table
-                  data={serviceTypeRows}
-                  columns={serviceTypeColumns}
-                />
-
-              </Card>
-            </Cell>
-
-            <Cell span={12}>
-              <Card>
-                <Table
-                  data={termRows}
-                  columns={termColumns}
-                />
-
-              </Card>
-            </Cell>
-
-            <Cell span={12}>
-              <Card>
-                <Table
-                  data={termYearRows}
-                  columns={termYearColumns}
-                />
-
-              </Card>
-            </Cell>
-
-            <Cell span={12}>
-              <Card>
-                <Table
-                  data={serviceRows}
-                  columns={serviceColumns}
-                />
-
-              </Card>
-            </Cell>
-
-            <Cell span={12}>
-              <Card>
-                <Table
-                  data={locationRows}
-                  columns={locationColumns}
-                />
-
-              </Card>
-            </Cell>
-
-
-            <Cell span={12}>
-              <Card>
-                <Table
-                  data={eventRows}
-                  columns={eventColumns}
-                />
-
-              </Card>
-            </Cell>
-
-            <Cell span={12}>
-              <Card>
-                <Table
-                  data={invoiceRows}
-                  columns={invoiceColumns}
-                />
-
-              </Card>
-            </Cell>
-
-
+            <>
+              {tables.map(mapTables)}
+            </>
 
           </Layout>
 

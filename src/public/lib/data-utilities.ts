@@ -1,6 +1,6 @@
 import { items } from '@wix/data';
 
-export async function bulkSaveSets(array: any[], collection: string,statusState:Function) {
+export async function bulkSaveSets(array: any[], collection: string, statusState: Function) {
     let bulkSets = [];
     let makeSet = [];
     array = await translateValues(array);
@@ -17,7 +17,7 @@ export async function bulkSaveSets(array: any[], collection: string,statusState:
 
     let sets = bulkSets.length;
     for (let i = 0; i < bulkSets.length; i++) {
-        statusState(`Saving (${i+1}/${sets})`);
+        statusState(`Saving (${i + 1}/${sets})`);
         try {
             await items.bulkSave(collection, bulkSets[i]);
         } catch (error) {
@@ -162,6 +162,41 @@ export async function aggregateCollection(
 
     return allItems as any[];
 }
+export async function aggregateBookingsServiceLocation(
+    startDate: string,
+    endDate: string,
+): Promise<any[]> {
+    let allItems = [];
+    const filter = items
+        .filter()
+        .ge('createdDate', startDate)
+        .le('createdDate', endDate);
+
+    let agg = items
+        .aggregate('bookingsAnalytics')
+        .filter(filter)
+        .sum('amountReceived')
+        .ascending('serviceType')
+        .descending('amountReceivedSum')
+        .group('serviceType', 'parseLocation')
+        .limit(1000)
+
+    let results = await
+        agg.run();
+
+    allItems.push(...results.items)
+
+    // console.log(results);
+    while (results.hasNext()) {
+        results = await results.next();
+        allItems.push(...results.items)
+
+    }
+
+    // console.log("aggregateBookingsServiceLocation", allItems);
+
+    return allItems as any[];
+}
 
 
 export async function aggregateAnalyticsCollections(
@@ -170,6 +205,7 @@ export async function aggregateAnalyticsCollections(
     endDate: string,
     group: string,
 ) {
+    //take mutliple CMS, aggreate by tax year/quarter and reduce sum into a 'single combined' result
     const promises = collections.map(i =>
         aggregateCollection(i, startDate, endDate, group)
     );
@@ -181,7 +217,7 @@ export async function aggregateAnalyticsCollections(
         group,
         "amountReceivedSum"
     );
-    console.log("aggregateAnalyticsCollections", combineResults);
+    // console.log("aggregateAnalyticsCollections", combineResults);
 
     //descending
     combineResults.sort(function (a, b) {
