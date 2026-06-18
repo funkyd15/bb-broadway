@@ -207,24 +207,32 @@ export async function aggregateBookingsServiceLocation(
 
     let agg = items
         .aggregate('bookingsAnalytics')
-        .filter(filter)
-        .sum('amountReceived')
+        .filter(filter)       
         .ascending('serviceType')
         .descending('amountReceivedSum')
         .group('serviceType', 'parseLocation')
         .limit(1000)
 
-    let results = await
-        agg.run();
-
-    allItems.push(...results.items)
-
+    let resultsAmount = await agg.sum('amountReceived').run();
+    
+    allItems.push(...resultsAmount.items)
+    
     // console.log(results);
-    while (results.hasNext()) {
-        results = await results.next();
-        allItems.push(...results.items)
-
+    while (resultsAmount.hasNext()) {
+        resultsAmount = await resultsAmount.next();
+        allItems.push(...resultsAmount.items)
     }
+
+    let resultsBenefit = await agg.sum('membershipBenefitValue').run();
+    allItems.push(...resultsBenefit.items)
+
+    // console.log("resultsBenefit", resultsBenefit);
+      while (resultsBenefit.hasNext()) {
+        resultsBenefit = await resultsBenefit.next();
+        allItems.push(...resultsBenefit.items)
+    }
+
+     allItems = combineArrayByKey(allItems,"_id");
 
     // console.log("aggregateBookingsServiceLocation", allItems);
 
@@ -248,13 +256,12 @@ export async function aggregateAnalyticsCollections(
 
     const results = await Promise.all(promises);
 
-    console.log("aggregateAnalyticsCollections", results);
+    // console.log("aggregateAnalyticsCollections", results);
 
 
-    const combineResults = combineByKey(
+    const combineResults = combineResultsByKey(
         results,
         group,
-        "amountReceivedSum"
     );
 
 
@@ -294,7 +301,7 @@ type AnyRecord = Record<string, any>;
 //         [valueKey]: sum,
 //     })) as T[];
 // }
-function combineByKey<T extends AnyRecord>(
+function combineResultsByKey<T extends AnyRecord>(
     data: T[][],
     groupKey: keyof T
 ): T[] {
@@ -326,6 +333,34 @@ function combineByKey<T extends AnyRecord>(
     }
 
     return Array.from(map.values()) as T[];
+}
+
+// type AnyRecord = Record<string, unknown>;
+
+function combineArrayByKey<T extends AnyRecord>(
+    items: T[],
+    groupKey: keyof T
+): T[] {
+     const map = new Map<string, T>();
+
+    for (const item of items) {
+        const key = JSON.stringify(item[groupKey]);
+
+        const existing = map.get(key);
+
+        if (!existing) {
+            map.set(key, { ...item });
+            continue;
+        }
+
+        for (const [prop, value] of Object.entries(item)) {
+            if (typeof value === 'number') {
+                existing[prop] = (existing[prop] ?? 0) + value;
+            }
+        }
+    }
+
+    return [...map.values()];
 }
 
 export async function getCreatedDateRange(collection: string): Promise<string> {

@@ -132,7 +132,7 @@ export async function queryExtendedBookings(startDate: Date, endDate: Date, stat
                 }
             }
 
-            const location = i.booking?.bookedEntity?.slot?.location.name;
+            const location = i.booking?.bookedEntity?.slot?.location.name || i.booking?.bookedEntity?.schedule?.location?.name;
             const parseLocation = extractVenue(location);
 
 
@@ -147,13 +147,13 @@ export async function queryExtendedBookings(startDate: Date, endDate: Date, stat
                 additionalFeesAmount,
                 link: `https://manage.wix.com/dashboard/0210b701-c715-482e-bdcf-2e8185181308/ecom-platform/order-details/${i.order?._id}`,
                 paymentStatus,
-                teacher: i.booking?.bookedEntity?.slot?.resource?.name,
-                location,
-                parseLocation,
-                serviceTitle,
-                serviceType,
-                term,
-                termYear: `${term} ${year}`,
+                teacher: i.booking?.bookedEntity?.slot?.resource?.name|| "--BLANK--",
+                location:location|| "--BLANK--",
+                parseLocation:parseLocation|| "--BLANK--",
+                serviceTitle:serviceTitle|| "--BLANK--",
+                serviceType:serviceType|| "--BLANK--",
+                term:term|| "--BLANK--",
+                termYear: [term, year].filter(Boolean).join(" ") || "--BLANK--",
                 amount,
                 discount,
                 couponCodes: findOrder?.appliedDiscounts?.map(n => n.coupon?.code),

@@ -147,8 +147,7 @@ const DashboardPage: FC = () => {
   async function runSums() {
     const start = YYYYMMDD(startDate);
     const end = YYYYMMDD(endDate);
-
-    // console.log("start:end", start, end);
+    console.log("startDate:endDate", start, end);
 
 
     const [
@@ -272,37 +271,40 @@ const DashboardPage: FC = () => {
 
   async function runReport() {
     setRunning(true);
-    console.log(startDate, endDate);
+    
+    const start = startOfDay(startDate);
+    const end = endOfDay(endDate);
+    console.log("runReport startDate:endDate",start, end);
 
     setStatus("Running Report...");
     if (apps.includes("bookings")) {
       setStatus("Bookings...");
-      const result = await queryExtendedBookings(startDate, endDate, setSubStatus);
-      console.log(result);
+      const result = await queryExtendedBookings(start, end, setSubStatus);
+      // console.log(result);
     }
 
     if (apps.includes("stores")) {
       setStatus("Stores...");
-      const result = await queryStoresOrders(startDate, endDate, setSubStatus);
-      console.log(result);
+      const result = await queryStoresOrders(start, end, setSubStatus);
+      // console.log(result);
     }
 
     if (apps.includes("events")) {
       setStatus("Events...");
-      const result = await queryEventsOrders(startDate, endDate, setSubStatus);
-      console.log(result);
+      const result = await queryEventsOrders(start, end, setSubStatus);
+      // console.log(result);
     }
 
     if (apps.includes("invoices")) {
       setStatus("Invoices...");
-      const result = await queryInvoices(startDate, endDate, setSubStatus);
-      console.log(result);
+      const result = await queryInvoices(start, end, setSubStatus);
+      // console.log(result);
     }
 
     if (apps.includes("pricingPlans")) {
       setStatus("Pricing Plans...");
-      const result = await queryPricingPlans(startDate, endDate, setSubStatus);
-      console.log(result);
+      const result = await queryPricingPlans(start, end, setSubStatus);
+      // console.log(result);
     }
 
     setSubStatus("Running Aggregate");
@@ -360,6 +362,16 @@ const DashboardPage: FC = () => {
       render: (item) => formatGBP(item.amountReceivedSum),
       width: '250px',
     },
+     {
+      id: 'membershipBenefitValueSum',
+      title: `Membership Value (${formatGBP(sumRows(locationRows, 'membershipBenefitValueSum'))})`,
+      render: (item) => formatGBP(item.membershipBenefitValueSum),
+      width: '250px',
+      infoTooltipProps: {
+        content:
+          'The value of bookings from membership benefits',
+      }
+    },
   ];
 
   const serviceColumns: TableColumn<any>[] = [
@@ -375,6 +387,16 @@ const DashboardPage: FC = () => {
       render: (item) => formatGBP(item.amountReceivedSum),
       width: '250px',
     },
+      {
+      id: 'membershipBenefitValueSum',
+      title: `Membership Value (${formatGBP(sumRows(serviceRows, 'membershipBenefitValueSum'))})`,
+      render: (item) => formatGBP(item.membershipBenefitValueSum),
+      width: '250px',
+      infoTooltipProps: {
+        content:
+          'The value of bookings from membership benefits',
+      }
+    },
   ];
 
   const termColumns: TableColumn<any>[] = [
@@ -389,7 +411,17 @@ const DashboardPage: FC = () => {
       title: `Amount Received (${formatGBP(sumBookings)})`,
       render: (item) => formatGBP(item.amountReceivedSum),
       width: '250px',
+    }, {
+      id: 'membershipBenefitValueSum',
+      title: `Membership Value (${formatGBP(sumRows(termRows, 'membershipBenefitValueSum'))})`,
+      render: (item) => formatGBP(item.membershipBenefitValueSum),
+      width: '250px',
+      infoTooltipProps: {
+        content:
+          'The value of bookings from membership benefits',
+      }
     },
+    
   ];
   const termYearColumns: TableColumn<any>[] = [
     {
@@ -403,6 +435,15 @@ const DashboardPage: FC = () => {
       title: `Amount Received (${formatGBP(sumBookings)})`,
       render: (item) => formatGBP(item.amountReceivedSum),
       width: '250px',
+    }, {
+      id: 'membershipBenefitValueSum',
+      title: `Membership Value (${formatGBP(sumRows(termYearRows, 'membershipBenefitValueSum'))})`,
+      render: (item) => formatGBP(item.membershipBenefitValueSum),
+      width: '250px',
+      infoTooltipProps: {
+        content:
+          'The value of bookings from membership benefits',
+      }
     },
     
   ];
@@ -458,7 +499,7 @@ const DashboardPage: FC = () => {
     {
       id: 'Service Type',
       title: `Service Type (${serviceTypeRows.length})`,
-      render: (item) => item.serviceType,
+      render: (item) => item.serviceType ,
       width: '250px',
     },
     {
@@ -466,6 +507,16 @@ const DashboardPage: FC = () => {
       title: `Amount Received (${formatGBP(sumBookings)})`,
       render: (item) => formatGBP(item.amountReceivedSum),
       width: '250px',
+    },
+    {
+      id: 'membershipBenefitValueSum',
+      title: `Membership Value (${formatGBP(sumRows(serviceTypeRows, 'membershipBenefitValueSum'))})`,
+      render: (item) => formatGBP(item.membershipBenefitValueSum),
+      width: '250px',
+      infoTooltipProps: {
+        content:
+          'The value of bookings from membership benefits',
+      }
     },
   ];
 
@@ -531,13 +582,13 @@ const DashboardPage: FC = () => {
     {
       id: 'serviceType',
       title: `Service Type (${serviceTypeLocationRows.length})`,
-      render: (item) => item.serviceType,
+      render: (item) => item.serviceType ,
       width: '250px',
     },
     {
       id: 'parseLocation',
       title: `Location`,
-      render: (item) => item.parseLocation,
+      render: (item) => item.parseLocation ,
       width: '250px',
     },
     {
@@ -545,6 +596,16 @@ const DashboardPage: FC = () => {
       title: `Amount Received`,
       render: (item) => formatGBP(item.amountReceivedSum),
       width: '250px',
+    },
+    {
+      id: 'membershipBenefitValueSum',
+      title: `Membership Value (${formatGBP(sumRows(serviceTypeLocationRows, 'membershipBenefitValueSum'))})`,
+      render: (item) => formatGBP(item.membershipBenefitValueSum),
+      width: '250px',
+      infoTooltipProps: {
+        content:
+          'The value of bookings from membership benefits',
+      }
     },
   ];
 
