@@ -623,15 +623,21 @@ const DashboardPage: FC = () => {
   const serviceTermYearLocationColumns: TableColumn<any>[] = [
     {
       id: 'serviceType',
-      title: `Service Type (${serviceTermYearLocationFilteredRows.length})`,
+      title: `Service (${serviceTermYearLocationFilteredRows.length})`,
       render: (item) => item.serviceType,
-      // width: '250px',
+      width: '100px',
     },
     {
-      id: 'termYear',
-      title: `Term Year`,
-      render: (item) => item.termYear,
-      // width: '250px',
+      id: 'year',
+      title: `Year`,
+      render: (item) => item.year,
+      width: '75px',
+    },
+    {
+      id: 'term',
+      title: `Term`,
+      render: (item) => item.term,
+      width: '75px',
     },
     {
       id: 'parseLocation',
@@ -679,7 +685,7 @@ const DashboardPage: FC = () => {
     for (const [key, value] of Object.entries(filters)) {
       //if not any
       if (value.id !== "0") {
-        filteredRows = filteredRows.filter(i=>i[key] && i[key]===value.value);
+        filteredRows = filteredRows.filter(i => i[key] && i[key] === value.value);
       }
     }
     setServiceTermYearLocationFilteredRows(filteredRows);
@@ -699,18 +705,29 @@ const DashboardPage: FC = () => {
           valueParser={({ value }) => value}
         />
       </TableToolbar.Item>
-       <TableToolbar.Item>
+      <TableToolbar.Item>
         <Dropdown
-          options={getDropdownOptionsFromRows(serviceTermYearLocationRows, "termYear", "All Term Years")}
-          selectedId={filters?.termYear?.id || "0"}
+          options={getDropdownOptionsFromRows(serviceTermYearLocationRows, "year", "All Years")}
+          selectedId={filters?.year?.id || "0"}
           border="round"
           size="small"
           popoverProps={{ appendTo: 'window' }}
-          onSelect={(termYear) => setFilters({ ...filters, termYear })}
+          onSelect={(year) => setFilters({ ...filters, year })}
           valueParser={({ value }) => value}
         />
       </TableToolbar.Item>
-       <TableToolbar.Item>
+      <TableToolbar.Item>
+        <Dropdown
+          options={getDropdownOptionsFromRows(serviceTermYearLocationRows, "term", "All Terms")}
+          selectedId={filters?.term?.id || "0"}
+          border="round"
+          size="small"
+          popoverProps={{ appendTo: 'window' }}
+          onSelect={(term) => setFilters({ ...filters, term })}
+          valueParser={({ value }) => value}
+        />
+      </TableToolbar.Item>
+      <TableToolbar.Item>
         <Dropdown
           options={getDropdownOptionsFromRows(serviceTermYearLocationRows, "parseLocation", "All Locations")}
           selectedId={filters?.parseLocation?.id || "0"}
@@ -734,7 +751,7 @@ const DashboardPage: FC = () => {
     { title: `Locations`, rows: locationRows, columns: locationColumns, accordian: true },
     { title: `Service Type`, rows: serviceTypeRows, columns: serviceTypeColumns, accordian: true },
     { title: `Service Type & Location`, rows: serviceTypeLocationRows, columns: serviceTypeLocationColumns, accordian: true },
-    { title: `Service Type, Term Year & Location`, rows: serviceTermYearLocationFilteredRows, columns: serviceTermYearLocationColumns, accordian: true, toolbar: tableFilters },
+    { title: `Service Type, Term, Year & Location`, rows: serviceTermYearLocationFilteredRows, columns: serviceTermYearLocationColumns, accordian: true, toolbar: tableFilters },
     { title: `Service`, rows: serviceRows, columns: serviceColumns, accordian: true },
     { title: `Term`, rows: termRows, columns: termColumns, accordian: true },
     { title: `Term & Year`, rows: termYearRows, columns: termYearColumns, accordian: true },

@@ -208,10 +208,9 @@ export async function aggregateBookingsServiceTermYearLocation(
     let agg = items
         .aggregate('bookingsAnalytics')
         .filter(filter)
-        .ascending('serviceType')
-        .ascending('termYear')
         .descending('amountReceivedSum')
-        .group('serviceType', 'termYear', 'parseLocation')
+        // .group('serviceType', 'termYear', 'parseLocation')
+        .group('serviceType', 'year', 'term', 'parseLocation')
         .limit(1000)
 
     let resultsAmount = await agg.sum('amountReceived').run();

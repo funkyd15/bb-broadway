@@ -72,29 +72,29 @@ export async function queryExtendedBookings(startDate: Date, endDate: Date, stat
                 }
             }
 
-            
-            
+
+
             const singleClassFees = findOrder?.additionalFees?.filter(f => f.code === "single-class-fees") || [];
             const additionalFeesAmount = singleClassFees.length > 0 ? Number(singleClassFees[0].price?.amount) : 0
-            
+
             const amountReceived = paymentStatus === "REFUNDED" || paymentStatus === "NOT_PAID" ? 0 : amount + additionalFeesAmount - discount;
-            
+
             const createdDate = i.booking?._createdDate;
             const createdDateYYYYMMDD = createdDate.toISOString().split("T")[0];
-            
+
             const serviceTitle = i.booking?.bookedEntity?.title || "";
-            
+
             const selectedPaymentOption = i.booking?.selectedPaymentOption;
-            
-            if (selectedPaymentOption === "MEMBERSHIP" ||selectedPaymentOption ==="MEMBERSHIP_OFFLINE"){
-                if(findService){
+
+            if (selectedPaymentOption === "MEMBERSHIP" || selectedPaymentOption === "MEMBERSHIP_OFFLINE") {
+                if (findService) {
                     membershipBenefitValue = Number(findService.payment?.fixed?.price?.value) || 0;
                 }
-                if(membershipBenefitValue===0){
+                if (membershipBenefitValue === 0) {
                     //default membershipBenefitValue = 10
                     membershipBenefitValue = 10;
                 }
-         
+
             }
 
             const serviceTypesMapping = [
@@ -147,13 +147,14 @@ export async function queryExtendedBookings(startDate: Date, endDate: Date, stat
                 additionalFeesAmount,
                 link: `https://manage.wix.com/dashboard/0210b701-c715-482e-bdcf-2e8185181308/ecom-platform/order-details/${i.order?._id}`,
                 paymentStatus,
-                teacher: i.booking?.bookedEntity?.slot?.resource?.name|| "--BLANK--",
-                location:location|| "--BLANK--",
-                parseLocation:parseLocation|| "--BLANK--",
-                serviceTitle:serviceTitle|| "--BLANK--",
-                serviceType:serviceType|| "--BLANK--",
-                term:term|| "--BLANK--",
-                termYear: [term, year].filter(Boolean).join(" ") || "--BLANK--",
+                teacher: i.booking?.bookedEntity?.slot?.resource?.name || "--BLANK--",
+                location: location || "--BLANK--",
+                parseLocation: parseLocation || "--BLANK--",
+                serviceTitle: serviceTitle || "--BLANK--",
+                serviceType: serviceType || "--BLANK--",
+                term: term || "--BLANK--",
+                year: year || "--BLANK--",
+                termYear: [year, term].filter(Boolean).join(" ") || "--BLANK--",
                 amount,
                 discount,
                 couponCodes: findOrder?.appliedDiscounts?.map(n => n.coupon?.code),
