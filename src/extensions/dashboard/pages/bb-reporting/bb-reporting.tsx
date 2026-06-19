@@ -16,6 +16,8 @@ import {
   Accordion,
   accordionItemBuilder,
   Heading,
+  Dropdown,
+  TableToolbar,
 } from '@wix/design-system';
 
 import type { TableColumn } from '@wix/patterns';
@@ -27,7 +29,7 @@ import { queryEventsOrders } from "../../../../public/lib/events";
 import { queryInvoices } from "../../../../public/lib/invoices";
 import { YYYYMMDD, formatGBP, parseDateRange } from "../../../../public/lib/utilities";
 import MultiCheckbox from "../../../../public/lib/multiCheckbox";
-import { sumAmountReceived, aggregateCollection, aggregateAnalyticsCollections, aggregateBookingsServiceLocation, getCreatedDateRange, aggregateCollectionWithMembershipValue } from "../../../../public/lib/data-utilities";
+import { sumAmountReceived, aggregateCollection, aggregateAnalyticsCollections, aggregateBookingsServiceLocation, aggregateBookingsServiceTermYearLocation, getCreatedDateRange, aggregateCollectionWithMembershipValue } from "../../../../public/lib/data-utilities";
 import DatePickerWithShortcuts from "../../../../public/lib/datePicker";
 import { queryPricingPlans } from "../../../../public/lib/pricingPlans";
 import { exportToCSV } from "../../../../public/lib/csv";
@@ -120,7 +122,10 @@ const DashboardPage: FC = () => {
   const [taxYearRows, setTaxYearRows] = useState<any[]>([]);
   const [taxQuarterRows, setTaxQuarterRows] = useState<any[]>([]);
   const [serviceTypeLocationRows, setServiceTypeLocationRows] = useState<any[]>([]);
+  const [serviceTermYearLocationRows, setServiceTermYearLocationRows] = useState<any[]>([]);
+  const [serviceTermYearLocationFilteredRows, setServiceTermYearLocationFilteredRows] = useState<any[]>([]);
   const [storesRows, setStoresRows] = useState<any[]>([]);
+  const [filters, setFilters] = useState<{}>({});
 
   useEffect(() => {
     setDateRange(parseDateRange(startDate, endDate));
@@ -179,7 +184,9 @@ const DashboardPage: FC = () => {
       invoicesDateRange,//21
       pricingPlansDateRange,//22
 
-  
+      serviceTermYearLocationRows,//23
+
+
     ] = await Promise.all([
       sumAmountReceived('bookingsAnalytics', start, end), // 0
       sumAmountReceived('storesAnalytics', start, end), // 1
@@ -210,6 +217,8 @@ const DashboardPage: FC = () => {
       getCreatedDateRange('invoicesAnalytics'),//21
       getCreatedDateRange('pricingPlanAnalytics'),//22
 
+      aggregateBookingsServiceTermYearLocation(start, end), // 23
+
     ]);
 
     setSumBookings(sumBookings); // 0
@@ -239,6 +248,8 @@ const DashboardPage: FC = () => {
     setEventsDateRange(eventsDateRange)//20
     setInvoicesDateRange(invoicesDateRange)//21
     setPricingPlansDateRange(pricingPlansDateRange)//22
+
+    setServiceTermYearLocationRows(serviceTermYearLocationRows)//22
 
     // console.log("Teacher Rows", teacherRows);
     // console.log("taxYearRows", taxYearRows);
@@ -271,10 +282,10 @@ const DashboardPage: FC = () => {
 
   async function runReport() {
     setRunning(true);
-    
+
     const start = startOfDay(startDate);
     const end = endOfDay(endDate);
-    console.log("runReport startDate:endDate",start, end);
+    console.log("runReport startDate:endDate", start, end);
 
     setStatus("Running Report...");
     if (apps.includes("bookings")) {
@@ -362,7 +373,7 @@ const DashboardPage: FC = () => {
       render: (item) => formatGBP(item.amountReceivedSum),
       width: '250px',
     },
-     {
+    {
       id: 'membershipBenefitValueSum',
       title: `Membership Value (${formatGBP(sumRows(locationRows, 'membershipBenefitValueSum'))})`,
       render: (item) => formatGBP(item.membershipBenefitValueSum),
@@ -387,7 +398,7 @@ const DashboardPage: FC = () => {
       render: (item) => formatGBP(item.amountReceivedSum),
       width: '250px',
     },
-      {
+    {
       id: 'membershipBenefitValueSum',
       title: `Membership Value (${formatGBP(sumRows(serviceRows, 'membershipBenefitValueSum'))})`,
       render: (item) => formatGBP(item.membershipBenefitValueSum),
@@ -421,7 +432,7 @@ const DashboardPage: FC = () => {
           'The value of bookings from membership benefits',
       }
     },
-    
+
   ];
   const termYearColumns: TableColumn<any>[] = [
     {
@@ -445,7 +456,7 @@ const DashboardPage: FC = () => {
           'The value of bookings from membership benefits',
       }
     },
-    
+
   ];
   const taxYearColumns: TableColumn<any>[] = [
     {
@@ -499,7 +510,7 @@ const DashboardPage: FC = () => {
     {
       id: 'Service Type',
       title: `Service Type (${serviceTypeRows.length})`,
-      render: (item) => item.serviceType ,
+      render: (item) => item.serviceType,
       width: '250px',
     },
     {
@@ -582,13 +593,13 @@ const DashboardPage: FC = () => {
     {
       id: 'serviceType',
       title: `Service Type (${serviceTypeLocationRows.length})`,
-      render: (item) => item.serviceType ,
+      render: (item) => item.serviceType,
       width: '250px',
     },
     {
       id: 'parseLocation',
       title: `Location`,
-      render: (item) => item.parseLocation ,
+      render: (item) => item.parseLocation,
       width: '250px',
     },
     {
@@ -609,6 +620,110 @@ const DashboardPage: FC = () => {
     },
   ];
 
+  const serviceTermYearLocationColumns: TableColumn<any>[] = [
+    {
+      id: 'serviceType',
+      title: `Service Type (${serviceTermYearLocationFilteredRows.length})`,
+      render: (item) => item.serviceType,
+      // width: '250px',
+    },
+    {
+      id: 'termYear',
+      title: `Term Year`,
+      render: (item) => item.termYear,
+      // width: '250px',
+    },
+    {
+      id: 'parseLocation',
+      title: `Location`,
+      render: (item) => item.parseLocation,
+      // width: '250px',
+    },
+    {
+      id: 'amountReceivedSum',
+      title: `Amount Received (${formatGBP(sumRows(serviceTermYearLocationFilteredRows, 'amountReceivedSum'))})`,
+      render: (item) => formatGBP(item.amountReceivedSum),
+      // width: '250px',
+    },
+    {
+      id: 'membershipBenefitValueSum',
+      title: `Membership Value (${formatGBP(sumRows(serviceTermYearLocationFilteredRows, 'membershipBenefitValueSum'))})`,
+      render: (item) => formatGBP(item.membershipBenefitValueSum),
+      // width: '250px',
+      infoTooltipProps: {
+        content:
+          'The value of bookings from membership benefits',
+      }
+    },
+  ];
+
+
+  function getDropdownOptionsFromRows(rows: any[], key: string, allValue: string) {
+    const values = [...new Set(rows.map(i => i[key]))].sort();
+    // const options = values.map((i: any, index: number) => ({ id: (index + 1).toString(), value: i }));
+    const options = values.map((i: any, index: number) => ({ id: i, value: i }));
+    options.unshift({ id: "0", value: allValue });
+
+    return options;
+
+  }
+
+
+  useEffect(() => {
+    setFilters({});
+  }, [serviceTermYearLocationRows]);
+
+  useEffect(() => {
+    let filteredRows = structuredClone(serviceTermYearLocationRows);
+
+    for (const [key, value] of Object.entries(filters)) {
+      //if not any
+      if (value.id !== "0") {
+        filteredRows = filteredRows.filter(i=>i[key] && i[key]===value.value);
+      }
+    }
+    setServiceTermYearLocationFilteredRows(filteredRows);
+  }, [filters]);
+
+
+  const tableFilters =
+    <TableToolbar.ItemGroup position="start">
+      <TableToolbar.Item>
+        <Dropdown
+          options={getDropdownOptionsFromRows(serviceTermYearLocationRows, "serviceType", "All Service Types")}
+          selectedId={filters?.serviceType?.id || "0"}
+          border="round"
+          size="small"
+          popoverProps={{ appendTo: 'window' }}
+          onSelect={(serviceType) => setFilters({ ...filters, serviceType })}
+          valueParser={({ value }) => value}
+        />
+      </TableToolbar.Item>
+       <TableToolbar.Item>
+        <Dropdown
+          options={getDropdownOptionsFromRows(serviceTermYearLocationRows, "termYear", "All Term Years")}
+          selectedId={filters?.termYear?.id || "0"}
+          border="round"
+          size="small"
+          popoverProps={{ appendTo: 'window' }}
+          onSelect={(termYear) => setFilters({ ...filters, termYear })}
+          valueParser={({ value }) => value}
+        />
+      </TableToolbar.Item>
+       <TableToolbar.Item>
+        <Dropdown
+          options={getDropdownOptionsFromRows(serviceTermYearLocationRows, "parseLocation", "All Locations")}
+          selectedId={filters?.parseLocation?.id || "0"}
+          border="round"
+          size="small"
+          popoverProps={{ appendTo: 'window' }}
+          onSelect={(parseLocation) => setFilters({ ...filters, parseLocation })}
+          valueParser={({ value }) => value}
+        />
+      </TableToolbar.Item>
+    </TableToolbar.ItemGroup>
+
+
   const taxTables = [
     { title: `Tax Years`, rows: taxYearRows, columns: taxYearColumns },
     { title: `Tax Quarters`, rows: taxQuarterRows, columns: taxQuarterColumns, accordian: true },
@@ -619,6 +734,7 @@ const DashboardPage: FC = () => {
     { title: `Locations`, rows: locationRows, columns: locationColumns, accordian: true },
     { title: `Service Type`, rows: serviceTypeRows, columns: serviceTypeColumns, accordian: true },
     { title: `Service Type & Location`, rows: serviceTypeLocationRows, columns: serviceTypeLocationColumns, accordian: true },
+    { title: `Service Type, Term Year & Location`, rows: serviceTermYearLocationFilteredRows, columns: serviceTermYearLocationColumns, accordian: true, toolbar: tableFilters },
     { title: `Service`, rows: serviceRows, columns: serviceColumns, accordian: true },
     { title: `Term`, rows: termRows, columns: termColumns, accordian: true },
     { title: `Term & Year`, rows: termYearRows, columns: termYearColumns, accordian: true },
@@ -640,7 +756,25 @@ const DashboardPage: FC = () => {
   ]
 
 
+
+
+
   const mapTables = (table: any, index: number) => {
+    const tbl = (
+      <Table
+        data={table.rows}
+        columns={table.columns}
+      >
+        {table.toolbar && (
+          <TableToolbar>
+            {table.toolbar}
+          </TableToolbar>
+        )}
+
+        <Table.Content />
+      </Table>
+    );
+
     const content = table.accordian ? (
       <Accordion
         items={[
@@ -648,10 +782,7 @@ const DashboardPage: FC = () => {
             title: table.title,
             children: (
               <Card>
-                <Table
-                  data={table.rows}
-                  columns={table.columns}
-                />
+                {tbl}
               </Card>
             ),
           }),
@@ -660,10 +791,7 @@ const DashboardPage: FC = () => {
       />
     ) : (
       <Card>
-        <Table
-          data={table.rows}
-          columns={table.columns}
-        />
+        {tbl}
       </Card>
     );
 

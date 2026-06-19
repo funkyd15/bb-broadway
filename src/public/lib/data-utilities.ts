@@ -130,7 +130,7 @@ export async function aggregateCollectionWithMembershipValue(
     group: string,
 ): Promise<any[]> {
 
-    const [amountSumAggResults, membershipBenefitSumAggResults ] = await Promise.all(
+    const [amountSumAggResults, membershipBenefitSumAggResults] = await Promise.all(
         [
             aggregateCollection(collection, startDate, endDate, group, 'amountReceived'),
             aggregateCollection(collection, startDate, endDate, group, 'membershipBenefitValue'),
@@ -195,6 +195,51 @@ export async function aggregateCollection(
 
 }
 
+export async function aggregateBookingsServiceTermYearLocation(
+    startDate: string,
+    endDate: string,
+): Promise<any[]> {
+    let allItems = [];
+    const filter = items
+        .filter()
+        .ge('createdDate', startDate)
+        .le('createdDate', endDate);
+
+    let agg = items
+        .aggregate('bookingsAnalytics')
+        .filter(filter)
+        .ascending('serviceType')
+        .ascending('termYear')
+        .descending('amountReceivedSum')
+        .group('serviceType', 'termYear', 'parseLocation')
+        .limit(1000)
+
+    let resultsAmount = await agg.sum('amountReceived').run();
+
+    allItems.push(...resultsAmount.items)
+
+    // console.log(results);
+    while (resultsAmount.hasNext()) {
+        resultsAmount = await resultsAmount.next();
+        allItems.push(...resultsAmount.items)
+    }
+
+    let resultsBenefit = await agg.sum('membershipBenefitValue').run();
+    allItems.push(...resultsBenefit.items)
+
+    // console.log("resultsBenefit", resultsBenefit);
+    while (resultsBenefit.hasNext()) {
+        resultsBenefit = await resultsBenefit.next();
+        allItems.push(...resultsBenefit.items)
+    }
+
+    allItems = combineArrayByKey(allItems, "_id");
+
+    // console.log("aggregateBookingsServiceLocation", allItems);
+
+    return allItems as any[];
+}
+
 export async function aggregateBookingsServiceLocation(
     startDate: string,
     endDate: string,
@@ -207,16 +252,16 @@ export async function aggregateBookingsServiceLocation(
 
     let agg = items
         .aggregate('bookingsAnalytics')
-        .filter(filter)       
+        .filter(filter)
         .ascending('serviceType')
         .descending('amountReceivedSum')
         .group('serviceType', 'parseLocation')
         .limit(1000)
 
     let resultsAmount = await agg.sum('amountReceived').run();
-    
+
     allItems.push(...resultsAmount.items)
-    
+
     // console.log(results);
     while (resultsAmount.hasNext()) {
         resultsAmount = await resultsAmount.next();
@@ -227,12 +272,12 @@ export async function aggregateBookingsServiceLocation(
     allItems.push(...resultsBenefit.items)
 
     // console.log("resultsBenefit", resultsBenefit);
-      while (resultsBenefit.hasNext()) {
+    while (resultsBenefit.hasNext()) {
         resultsBenefit = await resultsBenefit.next();
         allItems.push(...resultsBenefit.items)
     }
 
-     allItems = combineArrayByKey(allItems,"_id");
+    allItems = combineArrayByKey(allItems, "_id");
 
     // console.log("aggregateBookingsServiceLocation", allItems);
 
@@ -341,7 +386,7 @@ function combineArrayByKey<T extends AnyRecord>(
     items: T[],
     groupKey: keyof T
 ): T[] {
-     const map = new Map<string, T>();
+    const map = new Map<string, T>();
 
     for (const item of items) {
         const key = JSON.stringify(item[groupKey]);
