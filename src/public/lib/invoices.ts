@@ -20,6 +20,8 @@ export async function queryInvoices(startDate: Date, endDate: Date, statusState:
         let parsedItems = [];
         invoiceItems.forEach((i: any) => {
             const invoice = i.invoice;
+            const lineItems = invoice.lineItems;
+            const lineItemNames = lineItems.filter((i:any)=>i.name).map((i:any)=>i.name.trim()).join(";");
             invoice.payments.forEach((payment: any) => {
                 const createdDate = payment.date ? new Date(payment.date) : new Date(invoice.dates.issueDate);
                 const createdDateYYYYMMDD = YYYYMMDD(createdDate);
@@ -29,7 +31,7 @@ export async function queryInvoices(startDate: Date, endDate: Date, statusState:
                 const parsedItem = {
                     _id: payment.id,
                     invoiceId:invoice.id.id,
-                    number: invoice.number,
+                    invoiceNumber: invoice.number,
                     createdDate: createdDateYYYYMMDD,
                     taxYear: getUKTaxYear(createdDate, TaxYearFormat.Year),
                     taxQuarter: getUKTaxYear(createdDate, TaxYearFormat.Quarter),
@@ -40,6 +42,8 @@ export async function queryInvoices(startDate: Date, endDate: Date, statusState:
                     amountReceived,
                     email: invoice.customer.email,
                     item: config.includeItem ? invoice : undefined,
+                    lineItems,
+                    lineItemNames,
 
                 }
                 parsedItems.push(parsedItem);

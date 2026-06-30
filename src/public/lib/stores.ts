@@ -1,5 +1,6 @@
 
 import { orders } from "@wix/ecom";
+import { items as wixData } from '@wix/data';
 import { bulkSaveSets } from "./data-utilities";
 import { wixAppIds } from "./utilities";
 import { getUKTaxYear, TaxYearFormat, config } from "./utilities";
@@ -42,13 +43,14 @@ export async function queryStoresOrders(startDate: Date, endDate: Date, statusSt
 
                 const shippingAmount = Number(order.priceSummary?.shipping?.amount) || 0;
                 const orderAmountRefunded = Number(order.balanceSummary?.refunded?.amount) || 0;
-                const reduceRefundQuantity  = storesLineItems.reduce(
+                const reduceRefundQuantity = storesLineItems.reduce(
                     (accumulator, currentItem) => accumulator + Number(currentItem.refundQuantity || 0),
                     0,
                 );
-                const orderAmountReceived = shippingAmount - (order.paymentStatus === "PARTIALLY_REFUNDED" && reduceRefundQuantity===0 ? orderAmountRefunded : 0);
+                const orderAmount = shippingAmount - (order.paymentStatus === "PARTIALLY_REFUNDED" && reduceRefundQuantity === 0 ? orderAmountRefunded : 0);
 
                 const rootParsedItem = {
+                    orderId,
                     createdDate: createdDateYYYYMMDD,
                     taxYear: getUKTaxYear(createdDate, TaxYearFormat.Year),
                     taxQuarter: getUKTaxYear(createdDate, TaxYearFormat.Quarter),
@@ -64,15 +66,18 @@ export async function queryStoresOrders(startDate: Date, endDate: Date, statusSt
                     _id: orderId,
                     type: "ORDER",
                     name: "ORDER",
+                    title: "ORDER",
                     couponCodes,
+                    couponCode:couponCodes.join(";"),
                     storesLineItemsAmount,
                     storesLineItemsDiscount,
                     shippingAmount,
-                    amountReceived: orderAmountReceived,
+                    amountReceived: rootParsedItem.channelInfoType === "WIX_INVOICES" ? 0 : orderAmount,
+                    amount: orderAmount,
                     orderAdditionalFees: Number(order.priceSummary?.totalAdditionalFees?.amount),
                     orderAmountRefunded,
                     // item: config.includeItem ? order : undefined,
-                    item:  order,
+                    item: order,
                     storesLineItems: config.includeItem ? storesLineItems : undefined,
                     bookingsLineItems: config.includeItem ? bookingsLineItems : undefined,
                 }
@@ -91,17 +96,20 @@ export async function queryStoresOrders(startDate: Date, endDate: Date, statusSt
                         if (lineItem.refundQuantity) {
                             lineItemAmountRefunded = lineItemPrice * lineItem.refundQuantity;
                         }
-                        const lineItemAmountReceived = lineItemAmount - lineItemAmountRefunded;
+                        const lineItemAmountSubtotal = lineItemAmount - lineItemAmountRefunded;
 
                         let parsedLineItem = {
                             _id,
                             name: lineItem.productName?.original,
+                            title: lineItem.productName?.original,
                             lineItemId: lineItem._id,
                             lineItemOrderIndex,
                             type: "LINE_ITEM",
-                            amountReceived: lineItemAmountReceived,
+                            amountReceived: rootParsedItem.channelInfoType === "WIX_INVOICES" ? 0 : lineItemAmountSubtotal,
+                            amount:lineItemAmountSubtotal,
                             lineItem,
                             lineItemAmount,
+                            lineItemAmountSubtotal,
                             lineItemDiscount,
                             lineItemAmountRefunded,
                         }
@@ -151,6 +159,30 @@ export async function queryStoresOrders(startDate: Date, endDate: Date, statusSt
         await parseAndSaveOrders(response.orders);
 
     }
+
+    const wixInvoiceItems = allItems.filter(i => i.channelInfoType === "WIX_INVOICES");
+    const removeLeadingZeros = (str: string) => str.replace(/^0+/, "") || "0";
+
+    if (wixInvoiceItems.length > 0) {
+        const wixInvoiceIds = wixInvoiceItems.map(i => i.orderId);
+        let allInvoiceItems = [];
+        let invoiceResults = await wixData.query('invoices').hasSome('_id', wixInvoiceIds).limit(1000).find();
+        allInvoiceItems.push(...invoiceResults.items);
+        while (invoiceResults.hasNext()) {
+            invoiceResults = await invoiceResults.next();
+            allInvoiceItems.push(...invoiceResults.items);
+        }
+        allItems.forEach(item => {
+            if (item.channelInfoType === "WIX_INVOICES") {
+                let findInvoice = allInvoiceItems.find(i => i._id === item.orderId);
+                if (findInvoice) {
+                    item.invoiceNumber = removeLeadingZeros(findInvoice.number)
+                }
+            }
+        });
+    }
+
+
 
     statusState(`Saving: ${allItems.length}`);
 

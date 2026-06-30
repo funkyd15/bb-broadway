@@ -12,6 +12,7 @@ const analyticsCollections = [
     'storesAnalytics',
     'invoicesAnalytics',
     'pricingPlanAnalytics',
+    'expensesAnalytics',
 ];
 
 export async function exportToCSV(startDate: Date, endDate: Date, statusState: Function) {
@@ -26,12 +27,18 @@ async function queryAnalyticsCollection(startDate: Date, endDate: Date, statusSt
     let allItems: any[] = [];
 
     function pushItems(array: any[], collection: string) {
-        array.forEach(n => {
-            n.collection = collection;
-        });
-        allItems.push(...array);
+  array.forEach(n => {
+    n.collection = collection;
 
+    for (const [key, value] of Object.entries(n)) {
+      if (value !== null && typeof value === 'object') {
+        n[key] = JSON.stringify(value);
+      }
     }
+  });
+
+  allItems.push(...array);
+}
 
     for (let i = 0; i < analyticsCollections.length; i++) {
         const collection = analyticsCollections[i];
@@ -57,6 +64,13 @@ async function queryAnalyticsCollection(startDate: Date, endDate: Date, statusSt
 
 async function uploadCSV(jsonData: any[], filename: string, filePath: string) {
     try {
+        jsonData.sort(function (a, b) {
+            const sortKey = "createdDate";
+            if (a[sortKey] < b[sortKey]) { return 1; }
+            if (a[sortKey] > b[sortKey]) { return -1; }
+            return 0;
+        })
+
         // 1. Convert to CSV
         const keysToRemove = [
             "_owner",
@@ -72,12 +86,36 @@ async function uploadCSV(jsonData: any[], filename: string, filePath: string) {
         const sortKeys = [
             "_id",
             "createdDate",
+            "locked",
+            "notes",
             "taxYear",
             "taxQuarter",
             "taxMonth",
-            "amountReceived",
             "collection",
+            "amountReceived",
+            "amountExpensed",
+            "membershipBenefitValue",
+            "paymentStatus",
+            "selectedPaymentOption",
             "link",
+            "paymentLink",
+            "email",
+            "title",
+            "parseLocation",
+            "teacher",
+            "serviceTitle",
+            "serviceType",
+            "termYear",
+            "term",
+            "year",
+            "eventTitle",
+            "name",
+            "orderNumber",
+            "invoiceNumber",
+            "amount",
+            "discount",
+            "couponCode",
+            "couponCodes",
         ];
 
 
@@ -96,8 +134,8 @@ async function uploadCSV(jsonData: any[], filename: string, filePath: string) {
             // Only b is a sort key
             if (bIndex !== -1) return 1;
 
-            // Neither is a sort key
-            return 0;
+            // Neither is in the custom order - sort alphabetically
+            return a.localeCompare(b);
         });
 
         const csv = Papa.unparse({ fields: allKeys, data: jsonData });

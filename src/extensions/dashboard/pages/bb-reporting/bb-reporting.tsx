@@ -29,7 +29,18 @@ import { queryEventsOrders } from "../../../../public/lib/events";
 import { queryInvoices } from "../../../../public/lib/invoices";
 import { YYYYMMDD, formatGBP, parseDateRange } from "../../../../public/lib/utilities";
 import MultiCheckbox from "../../../../public/lib/multiCheckbox";
-import { sumAmountReceived, aggregateCollection, aggregateAnalyticsCollections, aggregateBookingsServiceLocation, aggregateBookingsServiceTermYearLocation, getCreatedDateRange, aggregateCollectionWithMembershipValue } from "../../../../public/lib/data-utilities";
+import {
+  sumAmountReceived,
+  aggregateCollection,
+  aggregateAnalyticsCollections,
+  aggregateBookingsServiceLocation, 
+  aggregateBookingsServiceTermYearLocation,
+   getCreatedDateRange, 
+   aggregateCollectionWithMembershipValue, 
+   bulkRemoveAnalytics,
+    bulkLockOrUnlockAnalytics,
+    sumAmountExpensed
+} from "../../../../public/lib/data-utilities";
 import DatePickerWithShortcuts from "../../../../public/lib/datePicker";
 import { queryPricingPlans } from "../../../../public/lib/pricingPlans";
 import { exportToCSV } from "../../../../public/lib/csv";
@@ -45,6 +56,7 @@ const DashboardPage: FC = () => {
     'storesAnalytics',
     'invoicesAnalytics',
     'pricingPlanAnalytics',
+    'expensesAnalytics',
   ];
 
   const startOfMonth = new Date(
@@ -82,15 +94,26 @@ const DashboardPage: FC = () => {
     return startOfDay(new Date(startYear, startMonth, 1));
   };
 
+  const previousFinancialYearStartDate = (date: Date): Date => {
+    const year = date.getFullYear();
+
+    const currentBoundary = new Date(year, 3, 1);
+
+    return date > currentBoundary
+      ? currentBoundary
+      : new Date(year - 1, 3, 1);
+
+  };
+
 
   const [running, setRunning] = useState<Boolean>(false);
-  const [startDate, setStartDate] = useState<Date>(startOfDay(new Date("1 April 2025")));
-  const [endDate, setEndDate] = useState<Date>(endOfDay(new Date("31 March 2026")));
+  const [startDate, setStartDate] = useState<Date>(previousFinancialYearStartDate(new Date()));
+  const [endDate, setEndDate] = useState<Date>(endOfDay(new Date()));
   const [status, setStatus] = useState<String>("Ready");
   const [subStatus, setSubStatus] = useState<String>("Ready");
   const [dateRange, setDateRange] = useState<String>("");
 
-  const [bookingsDateRange, setBookingsDateRange] = useState<String>("Hello");
+  const [bookingsDateRange, setBookingsDateRange] = useState<String>("");
   const [storesDateRange, setStoresDateRange] = useState<String>("");
   const [eventsDateRange, setEventsDateRange] = useState<String>("");
   const [invoicesDateRange, setInvoicesDateRange] = useState<String>("");
@@ -109,6 +132,7 @@ const DashboardPage: FC = () => {
   const [sumEvents, setSumEvents] = useState<Number>(0);
   const [sumInvoices, setSumInvoices] = useState<Number>(0);
   const [sumPricingPlans, setSumPricingPlans] = useState<Number>(0);
+  const [sumExpenses, setSumExpenses] = useState<Number>(0);
 
   const [teacherRows, setTeacherRows] = useState<any[]>([]);
   const [eventRows, setEventRows] = useState<any[]>([]);
@@ -117,6 +141,7 @@ const DashboardPage: FC = () => {
   const [locationRows, setLocationRows] = useState<any[]>([]);
   const [serviceRows, setServiceRows] = useState<any[]>([]);
   const [serviceTypeRows, setServiceTypeRows] = useState<any[]>([]);
+  const [expensesTeachersRows, setExpensesTeachersRows] = useState<any[]>([]);
   const [termRows, setTermRows] = useState<any[]>([]);
   const [termYearRows, setTermYearRows] = useState<any[]>([]);
   const [taxYearRows, setTaxYearRows] = useState<any[]>([]);
@@ -186,6 +211,9 @@ const DashboardPage: FC = () => {
 
       serviceTermYearLocationRows,//23
 
+      expensesTeachersRows,//24
+      sumExpenses,//25
+
 
     ] = await Promise.all([
       sumAmountReceived('bookingsAnalytics', start, end), // 0
@@ -219,6 +247,11 @@ const DashboardPage: FC = () => {
 
       aggregateBookingsServiceTermYearLocation(start, end), // 23
 
+      aggregateCollection('expensesAnalytics', start, end, 'teacher', 'amountExpensed', true), // 24
+
+      sumAmountExpensed('expensesAnalytics', start, end), // 25
+
+
     ]);
 
     setSumBookings(sumBookings); // 0
@@ -249,7 +282,10 @@ const DashboardPage: FC = () => {
     setInvoicesDateRange(invoicesDateRange)//21
     setPricingPlansDateRange(pricingPlansDateRange)//22
 
-    setServiceTermYearLocationRows(serviceTermYearLocationRows)//22
+    setServiceTermYearLocationRows(serviceTermYearLocationRows)//23
+
+    setExpensesTeachersRows(expensesTeachersRows)//24
+    setSumExpenses(sumExpenses)//25
 
     // console.log("Teacher Rows", teacherRows);
     // console.log("taxYearRows", taxYearRows);
@@ -278,7 +314,6 @@ const DashboardPage: FC = () => {
     setStatus("Complete");
     setRunning(false);
   }
-
 
   async function runReport() {
     setRunning(true);
@@ -328,34 +363,126 @@ const DashboardPage: FC = () => {
     setRunning(false);
   }
 
+  async function removeAnalytics() {
+    setRunning(true);
+
+    const start = YYYYMMDD(startOfDay(startDate));
+    const end = YYYYMMDD(endOfDay(endDate));
+    console.log("removeAnalytics startDate:endDate", start, end);
+
+    setStatus("Removing Analytics...");
+    if (apps.includes("bookings")) {
+      setStatus("Bookings...");
+      const result = await bulkRemoveAnalytics('bookingsAnalytics', start, end, setSubStatus);
+    }
+
+    if (apps.includes("stores")) {
+      setStatus("Stores...");
+      const result = await bulkRemoveAnalytics('storesAnalytics', start, end, setSubStatus);
+    }
+
+    if (apps.includes("events")) {
+      setStatus("Events...");
+      const result = await bulkRemoveAnalytics('eventsAnalytics', start, end, setSubStatus);
+    }
+
+    if (apps.includes("invoices")) {
+      setStatus("Invoices...");
+      const result = await bulkRemoveAnalytics('invoicesAnalytics', start, end, setSubStatus);
+    }
+
+    if (apps.includes("pricingPlans")) {
+      setStatus("Pricing Plans...");
+      const result = await bulkRemoveAnalytics('pricingPlanAnalytics', start, end, setSubStatus);
+    }
+
+    setSubStatus("Running Aggregate");
+
+    await runSums();
+
+    setStatus("Completed");
+    setSubStatus("");
+
+    setRunning(false);
+  }
+
+  async function lockOrUnlockAnalytics(lock: Boolean) {
+    setRunning(true);
+
+    const start = YYYYMMDD(startOfDay(startDate));
+    const end = YYYYMMDD(endOfDay(endDate));
+    console.log("lockOrUnlockAnalytics startDate:endDate", start, end);
+
+    setStatus("Removing Analytics...");
+    if (apps.includes("bookings")) {
+      setStatus("Bookings...");
+      const result = await bulkLockOrUnlockAnalytics('bookingsAnalytics', start, end, lock, setSubStatus);
+    }
+
+    if (apps.includes("stores")) {
+      setStatus("Stores...");
+      const result = await bulkLockOrUnlockAnalytics('storesAnalytics', start, end, lock, setSubStatus);
+    }
+
+    if (apps.includes("events")) {
+      setStatus("Events...");
+      const result = await bulkLockOrUnlockAnalytics('eventsAnalytics', start, end, lock, setSubStatus);
+    }
+
+    if (apps.includes("invoices")) {
+      setStatus("Invoices...");
+      const result = await bulkLockOrUnlockAnalytics('invoicesAnalytics', start, end, lock, setSubStatus);
+    }
+
+    if (apps.includes("pricingPlans")) {
+      setStatus("Pricing Plans...");
+      const result = await bulkLockOrUnlockAnalytics('pricingPlanAnalytics', start, end, lock, setSubStatus);
+    }
+
+    setSubStatus("Running Aggregate");
+
+    await runSums();
+
+    setStatus("Completed");
+    setSubStatus("");
+
+    setRunning(false);
+  }
+
   const teacherColumns: TableColumn<any>[] = [
     {
       id: 'teacher',
       title: `Teacher (${teacherRows.length})`,
       render: (item) => item.teacher,
-      width: '250px',
+      // width: '250px',
     },
     {
       id: 'amountReceivedSum',
       title: `Amount Received (${formatGBP(sumBookings)})`,
       render: (item) => formatGBP(item.amountReceivedSum),
-      width: '250px',
+      // width: '250px',
     },
     {
       id: 'membershipBenefitValueSum',
       title: `Membership Value (${formatGBP(sumRows(teacherRows, 'membershipBenefitValueSum'))})`,
       render: (item) => formatGBP(item.membershipBenefitValueSum),
-      width: '250px',
+      // width: '250px',
       infoTooltipProps: {
         content:
           'The value of bookings from membership benefits',
       }
     },
     {
+      id: 'expensesSum',
+      title: `Expenses [BETA] (${formatGBP(sumRows(teacherRows, 'expensesSum'))})`,
+      render: (item) => formatGBP(item.expensesSum),
+      // width: '250px',
+    },
+    {
       id: 'sumAmountAndValue',
-      title: `Sum (${formatGBP(sumRows(teacherRows, 'amountAndMembershipValueSum'))})`,
-      render: (item) => formatGBP(item.amountAndMembershipValueSum),
-      width: '250px',
+      title: `Sum [BETA] (${formatGBP(sumRows(teacherRows, 'sum'))})`,
+      render: (item) => formatGBP(item.sum),
+      // width: '250px',
     },
   ];
 
@@ -528,6 +655,19 @@ const DashboardPage: FC = () => {
         content:
           'The value of bookings from membership benefits',
       }
+    },
+  ];
+
+  const expensesTeachersColumns: TableColumn<any>[] = [
+    {
+      id: 'teacher',
+      title: `Teacher (${expensesTeachersRows.length})`,
+      render: (item) => item.teacher,
+    },
+    {
+      id: 'amountExpensedSum',
+      title: `Amount Expensed (${formatGBP(sumRows(expensesTeachersRows, 'amountExpensedSum'))})`,
+      render: (item) => formatGBP(item.amountExpensedSum),
     },
   ];
 
@@ -748,6 +888,7 @@ const DashboardPage: FC = () => {
 
   const bookingsTables = [
     { title: `Teachers`, rows: teacherRows, columns: teacherColumns, accordian: true },
+    { title: `Teachers Expenses [BETA]`, rows: expensesTeachersRows, columns: expensesTeachersColumns, accordian: true },
     { title: `Locations`, rows: locationRows, columns: locationColumns, accordian: true },
     { title: `Service Type`, rows: serviceTypeRows, columns: serviceTypeColumns, accordian: true },
     { title: `Service Type & Location`, rows: serviceTypeLocationRows, columns: serviceTypeLocationColumns, accordian: true },
@@ -771,8 +912,6 @@ const DashboardPage: FC = () => {
   const invoiceTables = [
     { title: `Invoices`, rows: invoiceRows, columns: invoiceColumns, accordian: true },
   ]
-
-
 
 
 
@@ -836,7 +975,7 @@ const DashboardPage: FC = () => {
                 <Accordion
                   items={[
                     accordionItemBuilder({
-                      title: 'Data Processing',
+                      title: 'Data Processing (Date of Purchase)',
                       children: (
                         <Box padding="SP4" direction="vertical" gap="SP4">
                           <Box padding="SP3">
@@ -854,12 +993,39 @@ const DashboardPage: FC = () => {
                             />
                           </Box>
 
-                          <Box width={w1}>
+                          <Box display="flex" gap="12px">
                             <Button
                               onClick={runReport}
                               disabled={running}
                             >
                               {running ? 'Running...' : 'Process Data'}
+                            </Button>
+
+                             <Button
+                              onClick={removeAnalytics}
+                              disabled={running}
+                              skin="destructive"
+                            >
+                              {running ? 'Running...' : 'Remove Analytics'}
+                            </Button>
+                          </Box>
+
+                       
+
+                          <Box display="flex" gap="12px">
+                            <Button
+                               onClick={() => lockOrUnlockAnalytics(true)}
+                              disabled={running}
+                              priority="secondary"
+                            >
+                              {running ? 'Running...' : 'Lock'}
+                            </Button>
+                            <Button
+                               onClick={() => lockOrUnlockAnalytics(false)}
+                              disabled={running}
+                              priority="secondary"
+                            >
+                              {running ? 'Running...' : 'Unlock'}
                             </Button>
                           </Box>
                         </Box>
@@ -910,7 +1076,14 @@ const DashboardPage: FC = () => {
             <Cell span={12}>
               <Card>
                 <Box padding="SP4" direction="vertical" gap="SP4">
-
+                  <Heading
+                    size="medium"
+                  >Dates of Purchase
+                  </Heading>
+                  <Heading size="medium" >{dateRange}</Heading>
+                  <Box paddingTop="SP1" paddingBottom="SP1">
+                    <Divider />
+                  </Box>
 
                   <DatePickerWithShortcuts
                     label="Start Date"
@@ -943,17 +1116,16 @@ const DashboardPage: FC = () => {
             <Cell span={12}>
               <Card>
                 <Box padding="SP3" direction="vertical" gap="SP2">
-                  <Heading size="medium" >{dateRange}</Heading>
 
-                  <Box paddingTop="SP1" paddingBottom="SP1">
-                    <Divider />
-                  </Box>
+
+
 
                   <Text>Bookings: {formatGBP(sumBookings)}</Text>
                   <Text>Events: {formatGBP(sumEvents)}</Text>
                   <Text>Invoices: {formatGBP(sumInvoices)}</Text>
                   <Text>Stores: {formatGBP(sumStores)}</Text>
                   <Text>Pricing Plans: {formatGBP(sumPricingPlans)}</Text>
+                  <Text>Expenses: {formatGBP(sumExpenses)}</Text>
 
                   <Box paddingTop="SP2" paddingBottom="SP2">
                     <Divider />

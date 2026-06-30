@@ -7,10 +7,6 @@ import { getUKTaxYear, TaxYearFormat ,config} from "./utilities";
 const anaylticsCollection = "eventsAnalytics";
 const limit = 100;
 
-export async function name(params:type) {
-    
-}
-
 export async function queryEventsOrders(startDate: Date, endDate: Date, statusState: Function) {
     statusState("Running queryEventsOrders...");
 
@@ -64,8 +60,9 @@ export async function queryEventsOrders(startDate: Date, endDate: Date, statusSt
                 orderNumber: i.orderNumber,
                 tickets: i.tickets,
                 ticketsQuantity: i.ticketsQuantity,
-                event: findEvent,
+                event: config.includeItem ? findEvent : undefined,
                 eventTitle: findEvent?.title,
+                title: findEvent?.title,
                 email: i.email,
                 amountReceived: Number(i.invoice?.revenue?.value),
                 couponCode: i.invoice?.discount?.discounts[0]?.coupon?.code,

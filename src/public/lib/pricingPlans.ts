@@ -95,6 +95,7 @@ export async function queryPricingPlans(startDate: Date, endDate: Date, statusSt
                     );
 
                     i.email = findContact?.primaryEmail?.email;
+                    i.title = i.planName;
 
                 });
             }

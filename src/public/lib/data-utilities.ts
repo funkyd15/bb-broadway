@@ -1,7 +1,55 @@
 import { items } from '@wix/data';
 import { YYYYMMDD } from './utilities';
 
-export async function bulkSaveSets(array: any[], collection: string, statusState: Function) {
+export async function bulkLockOrUnlockAnalytics(collection: string, startDate: string, endDate: string, lock: Boolean, statusState: Function) {
+    let count = 0;
+    statusState(`${lock ? 'Locking' : 'Unlocking'}: ${collection} (${count})`);
+
+    async function bulkLockOrUnlockItems(array: any[]) {
+        array.forEach(arrayItem => {
+            arrayItem.locked = lock;
+        });
+        // console.log("bulkLockOrUnlockItems",structuredClone(array));
+
+        count += array.length;
+        await bulkSaveSets(array, collection, statusState, { ignoreLocked: true });
+
+    }
+
+    let results = await items.query(collection).ge('createdDate', startDate).le('createdDate', endDate).limit(1000).find();
+    await bulkLockOrUnlockItems(results.items);
+
+    while (results.hasNext()) {
+        results = await results.next();
+        await bulkLockOrUnlockItems(results.items);
+    }
+
+}
+
+export async function bulkRemoveAnalytics(collection: string, startDate: string, endDate: string, statusState: Function) {
+    let allIds = [];
+    statusState(`Removing: ${collection} (${allIds.length})`);
+
+    async function bulkRemoveItems(removeItems: any[]) {
+        if (removeItems.length > 0) {
+            const ids = removeItems.map(i => i._id);
+            allIds.push(...ids);
+            await items.bulkRemove(collection, ids);
+            statusState(`Removing: ${collection} (${allIds.length})`);
+        }
+    }
+
+    let results = await items.query(collection).ge('createdDate', startDate).le('createdDate', endDate).ne('locked', true).limit(1000).find();
+    await bulkRemoveItems(results.items);
+
+    while (results.hasNext()) {
+        results = await results.next();
+        await bulkRemoveItems(results.items);
+    }
+
+}
+
+export async function bulkSaveSets(array: any[], collection: string, statusState: Function, options?: any) {
     let bulkSets = [];
     let makeSet = [];
     array = await translateValues(array);
@@ -19,19 +67,48 @@ export async function bulkSaveSets(array: any[], collection: string, statusState
     let sets = bulkSets.length;
     for (let i = 0; i < bulkSets.length; i++) {
         statusState(`Saving (${i + 1}/${sets})`);
+
+        await bulkSaveItems(collection, bulkSets[i], options)
+    }
+}
+
+const timer = (ms: number) => new Promise(res => setTimeout(res, ms));
+async function bulkSaveItems(collection: string, array: any[], options?: any) {
+
+    let saveItems: any[] = [];
+
+    if (options?.ignoreLocked) {
+        saveItems = array;
+    } else {
+        const ids = array.map(i => i._id);
+        const results = await items.query(collection).hasSome('_id', ids).limit(1000).find();
+        const existingItems = results.items;
+        const lockedItems = existingItems.filter(i => i.locked); //Boolean
+        const lockedIds = lockedItems.map(i => i._id);
+        array.forEach(item => {
+            if (!lockedIds.includes(item._id)) {
+                saveItems.push(item);
+            }
+        });
+    }
+
+
+    if (saveItems.length > 0) {
         try {
-            await items.bulkSave(collection, bulkSets[i]);
+            await items.bulkSave(collection, saveItems);
         } catch (error) {
             console.log(error);
+            await timer(300);
             try {
-                console.log(`Retrying Saving Set: ${i + 1}`);
-                await items.bulkSave(collection, bulkSets[i]);
+                await items.bulkSave(collection, saveItems);
+
             } catch (error) {
                 console.log(error);
-                console.log(`Error Saving Set: ${i + 1}`);
+
             }
         }
     }
+
 }
 
 function getObjectSizeInKB(obj: any) {
@@ -122,6 +199,24 @@ export async function sumAmountReceived(collection: string, startDate: string, e
     return results.items[0]?.amountReceivedSum || 0;
 
 }
+export async function sumAmountExpensed(collection: string, startDate: string, endDate: string) {
+
+    const filter = items
+        .filter()
+        .ge('createdDate', startDate)
+        .le('createdDate', endDate);
+
+    const results = await items
+        .aggregate(collection)
+        .filter(filter)
+        .sum('amountExpensed')
+        .descending('amountExpensedSum')
+        .run();
+
+
+    return results.items[0]?.amountExpensedSum || 0;
+
+}
 
 export async function aggregateCollectionWithMembershipValue(
     collection: string,
@@ -130,22 +225,29 @@ export async function aggregateCollectionWithMembershipValue(
     group: string,
 ): Promise<any[]> {
 
-    const [amountSumAggResults, membershipBenefitSumAggResults] = await Promise.all(
+    const [amountSumAggResults, membershipBenefitSumAggResults, expensesSumAggResults] = await Promise.all(
         [
             aggregateCollection(collection, startDate, endDate, group, 'amountReceived'),
             aggregateCollection(collection, startDate, endDate, group, 'membershipBenefitValue'),
+            aggregateCollection(`expensesAnalytics`, startDate, endDate, group, 'amountExpensed', true),
         ]
     )
     // console.log("aggregateCollectionWithMembershipValue",membershipBenefitSumAggResults,amountSumAggResults);
 
     amountSumAggResults.forEach(a => {
         const findMembership = membershipBenefitSumAggResults.find(i => i._id === a._id);
-        // console.log(findMembership);
-
         const membershipBenefitValueSum = findMembership?.membershipBenefitValueSum || 0;
         a.membershipBenefitValueSum = membershipBenefitValueSum;
         a.amountAndMembershipValueSum = membershipBenefitValueSum + a.amountReceivedSum;
+
+
+        const findExpenses = expensesSumAggResults.find(i => i._id === a._id);
+        const expensesSum = findExpenses?.amountExpensedSum || 0;
+        a.expensesSum = expensesSum;
+
+        a.sum = a.amountReceivedSum + a.membershipBenefitValueSum + a.expensesSum;
     });
+
 
 
     return amountSumAggResults;
@@ -159,15 +261,20 @@ export async function aggregateCollection(
     endDate: string,
     group?: string,
     sum?: string,
+    ignoreBlanks?: boolean,
 ): Promise<any[]> {
     if (!sum) { sum = 'amountReceived' };
     // console.log(sum);
 
     let allItems = [];
-    const filter = items
+    let filter = items
         .filter()
         .ge('createdDate', startDate)
         .le('createdDate', endDate);
+
+    if (ignoreBlanks && group) {
+        filter = filter.ne(group, undefined).ne(group, "");
+    }
 
     let agg = items
         .aggregate(collection)
@@ -188,6 +295,12 @@ export async function aggregateCollection(
     while (results.hasNext()) {
         results = await results.next();
         allItems.push(...results.items)
+
+    }
+
+    if (ignoreBlanks && group) {
+
+        console.log("ignoreBlanks && group", ignoreBlanks, group, allItems);
 
     }
 
