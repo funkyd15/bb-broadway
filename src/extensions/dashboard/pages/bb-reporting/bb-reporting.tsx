@@ -18,7 +18,16 @@ import {
   Heading,
   Dropdown,
   TableToolbar,
+  ToggleButton,
+
+
 } from '@wix/design-system';
+
+import {
+  Filter,
+  SortAZ,
+  SortZA,
+} from "@wix/wix-ui-icons-common/odeditor";
 
 import type { TableColumn } from '@wix/patterns';
 
@@ -33,13 +42,14 @@ import {
   sumAmountReceived,
   aggregateCollection,
   aggregateAnalyticsCollections,
-  aggregateBookingsServiceLocation, 
+  aggregateBookingsServiceLocation,
   aggregateBookingsServiceTermYearLocation,
-   getCreatedDateRange, 
-   aggregateCollectionWithMembershipValue, 
-   bulkRemoveAnalytics,
-    bulkLockOrUnlockAnalytics,
-    sumAmountExpensed
+  getCreatedDateRange,
+  aggregateCollectionWithMembershipValue,
+  bulkRemoveAnalytics,
+  bulkLockOrUnlockAnalytics,
+  sumAmountExpensed,
+  aggregateCollectionWithMembershipValueAndExpenses
 } from "../../../../public/lib/data-utilities";
 import DatePickerWithShortcuts from "../../../../public/lib/datePicker";
 import { queryPricingPlans } from "../../../../public/lib/pricingPlans";
@@ -58,6 +68,17 @@ const DashboardPage: FC = () => {
     'pricingPlanAnalytics',
     'expensesAnalytics',
   ];
+
+  const tooltips = {
+    sum: {
+      content:
+        'Received - Expensed',
+    },
+    membershipBenefitValue: {
+      content:
+        'The value of bookings from membership benefits',
+    }
+  }
 
   const startOfMonth = new Date(
     new Date().getFullYear(),
@@ -105,6 +126,16 @@ const DashboardPage: FC = () => {
 
   };
 
+  function processRows(rows: any[]) {
+    rows.forEach(r => {
+      r.amountReceivedSum = r.amountReceivedSum || 0;
+      r.membershipBenefitValueSum = r.membershipBenefitValueSum || 0;
+      r.amountExpensedSum = r.amountExpensedSum || 0;
+      r.sum = r.amountReceivedSum + r.amountExpensedSum; //+r.membershipBenefitValueSum ;
+    });
+    return rows
+  }
+
 
   const [running, setRunning] = useState<Boolean>(false);
   const [startDate, setStartDate] = useState<Date>(previousFinancialYearStartDate(new Date()));
@@ -133,7 +164,9 @@ const DashboardPage: FC = () => {
   const [sumInvoices, setSumInvoices] = useState<Number>(0);
   const [sumPricingPlans, setSumPricingPlans] = useState<Number>(0);
   const [sumExpenses, setSumExpenses] = useState<Number>(0);
+  const [sumRevenue, setSumRevenue] = useState<Number>(0);
 
+  const [summaryRows, setSummaryRows] = useState<any[]>([]);
   const [teacherRows, setTeacherRows] = useState<any[]>([]);
   const [eventRows, setEventRows] = useState<any[]>([]);
   const [invoiceRows, setInvoiceRows] = useState<any[]>([]);
@@ -141,7 +174,6 @@ const DashboardPage: FC = () => {
   const [locationRows, setLocationRows] = useState<any[]>([]);
   const [serviceRows, setServiceRows] = useState<any[]>([]);
   const [serviceTypeRows, setServiceTypeRows] = useState<any[]>([]);
-  const [expensesTeachersRows, setExpensesTeachersRows] = useState<any[]>([]);
   const [termRows, setTermRows] = useState<any[]>([]);
   const [termYearRows, setTermYearRows] = useState<any[]>([]);
   const [taxYearRows, setTaxYearRows] = useState<any[]>([]);
@@ -151,6 +183,13 @@ const DashboardPage: FC = () => {
   const [serviceTermYearLocationFilteredRows, setServiceTermYearLocationFilteredRows] = useState<any[]>([]);
   const [storesRows, setStoresRows] = useState<any[]>([]);
   const [filters, setFilters] = useState<{}>({});
+  const [sorting, setSorting] = useState<{
+    key: string;
+    direction: 'A-Z' | 'Z-A';
+  }>({
+    key: "amountReceivedSum",
+    direction: 'Z-A',
+  });
 
   useEffect(() => {
     setDateRange(parseDateRange(startDate, endDate));
@@ -211,8 +250,7 @@ const DashboardPage: FC = () => {
 
       serviceTermYearLocationRows,//23
 
-      expensesTeachersRows,//24
-      sumExpenses,//25
+      sumExpenses,//24
 
 
     ] = await Promise.all([
@@ -222,13 +260,14 @@ const DashboardPage: FC = () => {
       sumAmountReceived('invoicesAnalytics', start, end), // 3
       sumAmountReceived('pricingPlanAnalytics', start, end), // 4
 
-      aggregateCollectionWithMembershipValue('bookingsAnalytics', start, end, 'teacher'), // 5
-      aggregateCollectionWithMembershipValue('bookingsAnalytics', start, end, 'parseLocation'), // 6
-      aggregateCollectionWithMembershipValue('bookingsAnalytics', start, end, 'serviceTitle'), // 7
-      aggregateCollectionWithMembershipValue('bookingsAnalytics', start, end, 'serviceType'), // 8
-      aggregateCollectionWithMembershipValue('bookingsAnalytics', start, end, 'term'), //9
-      aggregateCollectionWithMembershipValue('bookingsAnalytics', start, end, 'termYear'), // 10
-      aggregateCollection('eventsAnalytics', start, end, 'eventTitle'), // 11
+      aggregateCollectionWithMembershipValueAndExpenses('bookingsAnalytics', start, end, 'teacher'), // 5
+      aggregateCollectionWithMembershipValueAndExpenses('bookingsAnalytics', start, end, 'parseLocation'), // 6
+      aggregateCollectionWithMembershipValueAndExpenses('bookingsAnalytics', start, end, 'serviceTitle'), // 7
+      aggregateCollectionWithMembershipValueAndExpenses('bookingsAnalytics', start, end, 'serviceType'), // 8
+      aggregateCollectionWithMembershipValueAndExpenses('bookingsAnalytics', start, end, 'term'), //9
+      aggregateCollectionWithMembershipValueAndExpenses('bookingsAnalytics', start, end, 'termYear'), // 10
+
+      aggregateCollectionWithMembershipValueAndExpenses('eventsAnalytics', start, end, 'eventTitle'), // 11
       aggregateCollection('invoicesAnalytics', start, end, 'title'), // 12
       aggregateCollection('pricingPlanAnalytics', start, end, 'planName'), // 13
 
@@ -247,9 +286,7 @@ const DashboardPage: FC = () => {
 
       aggregateBookingsServiceTermYearLocation(start, end), // 23
 
-      aggregateCollection('expensesAnalytics', start, end, 'teacher', 'amountExpensed', true), // 24
-
-      sumAmountExpensed('expensesAnalytics', start, end), // 25
+      sumAmountExpensed('expensesAnalytics', start, end), // 24
 
 
     ]);
@@ -259,6 +296,7 @@ const DashboardPage: FC = () => {
     setSumEvents(sumEvents); // 2
     setSumInvoices(sumInvoices); // 3
     setSumPricingPlans(sumPricingPlans); // 4
+
 
     setTeacherRows(teacherRows); // 5
     setLocationRows(locationRows); // 6
@@ -270,8 +308,8 @@ const DashboardPage: FC = () => {
     setInvoiceRows(invoiceRows); // 12
     setPricingPlanRows(pricingPlanRows); // 13
 
-    setTaxYearRows(taxYearRows); // 14
-    setTaxQuarterRows(taxQuarterRows); // 15
+    setTaxYearRows(processRows(taxYearRows)); // 14
+    setTaxQuarterRows(processRows(taxQuarterRows)); // 15
 
     setServiceTypeLocationRows(serviceTypeLocationRows); // 16
     setStoresRows(storesRows); // 17
@@ -282,23 +320,35 @@ const DashboardPage: FC = () => {
     setInvoicesDateRange(invoicesDateRange)//21
     setPricingPlansDateRange(pricingPlansDateRange)//22
 
-    setServiceTermYearLocationRows(serviceTermYearLocationRows)//23
+    setServiceTermYearLocationRows(processRows(serviceTermYearLocationRows))//23
 
-    setExpensesTeachersRows(expensesTeachersRows)//24
-    setSumExpenses(sumExpenses)//25
 
-    // console.log("Teacher Rows", teacherRows);
-    // console.log("taxYearRows", taxYearRows);
+    setSumExpenses(sumExpenses)//24
+
+    const summary = [
+      { title: "Bookings", value: sumBookings },
+      { title: "Events", value: sumEvents },
+      { title: "Invoices", value: sumInvoices },
+      { title: "Pricing Plans", value: sumPricingPlans },
+      { title: "Stores", value: sumStores },
+      { title: "Expenses", value: sumExpenses },
+    ];
+
+    setSummaryRows(summary);
+
+    setSumRevenue(sumRows(taxYearRows, 'amountReceivedSum'))
+
+    // console.log("locationRows", locationRows);
+
 
   }
 
 
   function sumRows(rows: any[], key: string) {
-    const sumReceived = rows.reduce(
-      (accumulator, currentItem) => accumulator + currentItem[key] || 0,
+    return rows.reduce(
+      (accumulator, currentItem) => accumulator + (currentItem[key] ?? 0),
       0,
     );
-    return sumReceived;
   }
 
   async function runExportToCSV() {
@@ -449,6 +499,20 @@ const DashboardPage: FC = () => {
     setRunning(false);
   }
 
+  const summaryColumns: TableColumn<any>[] = [
+    {
+      id: 'title',
+      title: `Title`,
+      render: (item) => item.title,
+      width: "250px"
+    },
+    {
+      id: 'value',
+      title: `Amount (${formatGBP(sumRows(summaryRows, 'value'))})`,
+      render: (item) => formatGBP(item.value),
+    },
+
+  ];
   const teacherColumns: TableColumn<any>[] = [
     {
       id: 'teacher',
@@ -458,31 +522,27 @@ const DashboardPage: FC = () => {
     },
     {
       id: 'amountReceivedSum',
-      title: `Amount Received (${formatGBP(sumBookings)})`,
+      title: `Received (${formatGBP(sumBookings)})`,
       render: (item) => formatGBP(item.amountReceivedSum),
       // width: '250px',
     },
     {
-      id: 'membershipBenefitValueSum',
-      title: `Membership Value (${formatGBP(sumRows(teacherRows, 'membershipBenefitValueSum'))})`,
-      render: (item) => formatGBP(item.membershipBenefitValueSum),
-      // width: '250px',
-      infoTooltipProps: {
-        content:
-          'The value of bookings from membership benefits',
-      }
-    },
-    {
-      id: 'expensesSum',
-      title: `Expenses [BETA] (${formatGBP(sumRows(teacherRows, 'expensesSum'))})`,
-      render: (item) => formatGBP(item.expensesSum),
+      id: 'amountExpensedSum',
+      title: `Expensed (${formatGBP(sumRows(teacherRows, 'amountExpensedSum'))})`,
+      render: (item) => formatGBP(item.amountExpensedSum),
       // width: '250px',
     },
     {
-      id: 'sumAmountAndValue',
-      title: `Sum [BETA] (${formatGBP(sumRows(teacherRows, 'sum'))})`,
+      id: 'sum',
+      title: `Sum (${formatGBP(sumRows(teacherRows, 'sum'))})`,
       render: (item) => formatGBP(item.sum),
-      // width: '250px',
+      infoTooltipProps: tooltips.sum,
+    },
+    {
+      id: 'membershipBenefitValueSum',
+      title: `MV (${formatGBP(sumRows(teacherRows, 'membershipBenefitValueSum'))})`,
+      render: (item) => formatGBP(item.membershipBenefitValueSum),
+      infoTooltipProps: tooltips.membershipBenefitValue,
     },
   ];
 
@@ -492,23 +552,17 @@ const DashboardPage: FC = () => {
       id: 'location',
       title: `Location (${locationRows.length})`,
       render: (item) => item.parseLocation,
-      width: '250px',
     },
     {
       id: 'amountReceivedSum',
-      title: `Amount Received (${formatGBP(sumBookings)})`,
+      title: `Received (${formatGBP(sumBookings)})`,
       render: (item) => formatGBP(item.amountReceivedSum),
-      width: '250px',
     },
     {
       id: 'membershipBenefitValueSum',
-      title: `Membership Value (${formatGBP(sumRows(locationRows, 'membershipBenefitValueSum'))})`,
+      title: `MV (${formatGBP(sumRows(locationRows, 'membershipBenefitValueSum'))})`,
       render: (item) => formatGBP(item.membershipBenefitValueSum),
-      width: '250px',
-      infoTooltipProps: {
-        content:
-          'The value of bookings from membership benefits',
-      }
+      infoTooltipProps: tooltips.membershipBenefitValue,
     },
   ];
 
@@ -521,13 +575,13 @@ const DashboardPage: FC = () => {
     },
     {
       id: 'amountReceivedSum',
-      title: `Amount Received (${formatGBP(sumBookings)})`,
+      title: `Received (${formatGBP(sumBookings)})`,
       render: (item) => formatGBP(item.amountReceivedSum),
       width: '250px',
     },
     {
       id: 'membershipBenefitValueSum',
-      title: `Membership Value (${formatGBP(sumRows(serviceRows, 'membershipBenefitValueSum'))})`,
+      title: `MV (${formatGBP(sumRows(serviceRows, 'membershipBenefitValueSum'))})`,
       render: (item) => formatGBP(item.membershipBenefitValueSum),
       width: '250px',
       infoTooltipProps: {
@@ -535,6 +589,7 @@ const DashboardPage: FC = () => {
           'The value of bookings from membership benefits',
       }
     },
+
   ];
 
   const termColumns: TableColumn<any>[] = [
@@ -546,12 +601,12 @@ const DashboardPage: FC = () => {
     },
     {
       id: 'amountReceivedSum',
-      title: `Amount Received (${formatGBP(sumBookings)})`,
+      title: `Received (${formatGBP(sumBookings)})`,
       render: (item) => formatGBP(item.amountReceivedSum),
       width: '250px',
     }, {
       id: 'membershipBenefitValueSum',
-      title: `Membership Value (${formatGBP(sumRows(termRows, 'membershipBenefitValueSum'))})`,
+      title: `MV (${formatGBP(sumRows(termRows, 'membershipBenefitValueSum'))})`,
       render: (item) => formatGBP(item.membershipBenefitValueSum),
       width: '250px',
       infoTooltipProps: {
@@ -570,12 +625,12 @@ const DashboardPage: FC = () => {
     },
     {
       id: 'amountReceivedSum',
-      title: `Amount Received (${formatGBP(sumBookings)})`,
+      title: `Received (${formatGBP(sumBookings)})`,
       render: (item) => formatGBP(item.amountReceivedSum),
       width: '250px',
     }, {
       id: 'membershipBenefitValueSum',
-      title: `Membership Value (${formatGBP(sumRows(termYearRows, 'membershipBenefitValueSum'))})`,
+      title: `MV (${formatGBP(sumRows(termYearRows, 'membershipBenefitValueSum'))})`,
       render: (item) => formatGBP(item.membershipBenefitValueSum),
       width: '250px',
       infoTooltipProps: {
@@ -590,99 +645,108 @@ const DashboardPage: FC = () => {
       id: 'Tax Year',
       title: `Tax Year (${taxYearRows.length})`,
       render: (item) => item.taxYear,
-      width: '250px',
     },
     {
       id: 'amountReceivedSum',
-      title: `Amount Received (${formatGBP(sumRows(taxYearRows, 'amountReceivedSum'))})`,
+      title: `Received (${formatGBP(sumRows(taxYearRows, 'amountReceivedSum'))})`,
       render: (item) => formatGBP(item.amountReceivedSum),
-      width: '250px',
+    },
+    {
+      id: 'amountExpensedSum',
+      title: `Expensed (${formatGBP(sumRows(taxYearRows, 'amountExpensedSum'))})`,
+      render: (item) => formatGBP(item.amountExpensedSum),
+    },
+    {
+      id: 'sum',
+      title: `Sum (${formatGBP(sumRows(taxYearRows, 'sum'))})`,
+      render: (item) => formatGBP(item.sum),
+      infoTooltipProps: tooltips.sum,
     },
     {
       id: 'membershipBenefitValueSum',
-      title: `Membership Value (${formatGBP(sumRows(taxYearRows, 'membershipBenefitValueSum'))})`,
+      title: `MV (${formatGBP(sumRows(taxYearRows, 'membershipBenefitValueSum'))})`,
       render: (item) => formatGBP(item.membershipBenefitValueSum),
-      width: '250px',
-      infoTooltipProps: {
-        content:
-          'The value of bookings from membership benefits',
-      }
+      infoTooltipProps: tooltips.membershipBenefitValue,
     },
+
   ];
   const taxQuarterColumns: TableColumn<any>[] = [
     {
       id: 'Tax Quarter',
       title: `Tax Quarter (${taxQuarterRows.length})`,
       render: (item) => item.taxQuarter,
-      width: '250px',
     },
     {
       id: 'amountReceivedSum',
-      title: `Amount Received (${formatGBP(sumRows(taxQuarterRows, 'amountReceivedSum'))})`,
+      title: `Received (${formatGBP(sumRows(taxQuarterRows, 'amountReceivedSum'))})`,
       render: (item) => formatGBP(item.amountReceivedSum),
-      width: '250px',
+    },
+    {
+      id: 'amountExpensedSum',
+      title: `Expensed (${formatGBP(sumRows(taxQuarterRows, 'amountExpensedSum'))})`,
+      render: (item) => formatGBP(item.amountExpensedSum),
+    },
+    {
+      id: 'sum',
+      title: `Sum (${formatGBP(sumRows(taxQuarterRows, 'sum'))})`,
+      render: (item) => formatGBP(item.sum),
+      infoTooltipProps: tooltips.sum,
     },
     {
       id: 'membershipBenefitValueSum',
-      title: `Membership Value (${formatGBP(sumRows(taxQuarterRows, 'membershipBenefitValueSum'))})`,
+      title: `MV (${formatGBP(sumRows(taxQuarterRows, 'membershipBenefitValueSum'))})`,
       render: (item) => formatGBP(item.membershipBenefitValueSum),
-      width: '250px',
-      infoTooltipProps: {
-        content:
-          'The value of bookings from membership benefits',
-      }
+      infoTooltipProps: tooltips.membershipBenefitValue,
     },
+
   ];
   const serviceTypeColumns: TableColumn<any>[] = [
     {
       id: 'Service Type',
       title: `Service Type (${serviceTypeRows.length})`,
       render: (item) => item.serviceType,
-      width: '250px',
     },
     {
       id: 'amountReceivedSum',
-      title: `Amount Received (${formatGBP(sumBookings)})`,
+      title: `Received (${formatGBP(sumBookings)})`,
       render: (item) => formatGBP(item.amountReceivedSum),
-      width: '250px',
     },
     {
       id: 'membershipBenefitValueSum',
-      title: `Membership Value (${formatGBP(sumRows(serviceTypeRows, 'membershipBenefitValueSum'))})`,
+      title: `MV (${formatGBP(sumRows(serviceTypeRows, 'membershipBenefitValueSum'))})`,
       render: (item) => formatGBP(item.membershipBenefitValueSum),
-      width: '250px',
-      infoTooltipProps: {
-        content:
-          'The value of bookings from membership benefits',
-      }
-    },
-  ];
-
-  const expensesTeachersColumns: TableColumn<any>[] = [
-    {
-      id: 'teacher',
-      title: `Teacher (${expensesTeachersRows.length})`,
-      render: (item) => item.teacher,
+      infoTooltipProps: tooltips.membershipBenefitValue,
     },
     {
       id: 'amountExpensedSum',
-      title: `Amount Expensed (${formatGBP(sumRows(expensesTeachersRows, 'amountExpensedSum'))})`,
+      title: `Expensed (${formatGBP(sumRows(serviceTypeRows, 'amountExpensedSum'))})`,
       render: (item) => formatGBP(item.amountExpensedSum),
     },
   ];
+
 
   const eventColumns: TableColumn<any>[] = [
     {
       id: 'eventTitle',
       title: `Event (${eventRows.length})`,
       render: (item) => item.eventTitle,
-      width: '250px',
+      width: "500px"
     },
     {
       id: 'amountReceivedSum',
-      title: `Amount Received (${formatGBP(sumEvents)})`,
+      title: `Received (${formatGBP(sumEvents)})`,
       render: (item) => formatGBP(item.amountReceivedSum),
-      width: '250px',
+    },
+    {
+      id: 'amountExpensedSum',
+      title: `Expensed (${formatGBP(sumRows(eventRows, 'amountExpensedSum'))})`,
+      render: (item) => formatGBP(item.amountExpensedSum),
+    },
+     {
+      id: 'sum',
+      title: `Sum (${formatGBP(sumRows(eventRows, 'sum'))})`,
+      render: (item) => formatGBP(item.sum),
+      infoTooltipProps: tooltips.sum,
     },
   ];
   const invoiceColumns: TableColumn<any>[] = [
@@ -694,7 +758,7 @@ const DashboardPage: FC = () => {
     },
     {
       id: 'amountReceivedSum',
-      title: `Amount Received (${formatGBP(sumInvoices)})`,
+      title: `Received (${formatGBP(sumInvoices)})`,
       render: (item) => formatGBP(item.amountReceivedSum),
       width: '250px',
     },
@@ -709,7 +773,7 @@ const DashboardPage: FC = () => {
     },
     {
       id: 'amountReceivedSum',
-      title: `Amount Received (${formatGBP(sumPricingPlans)})`,
+      title: `Received (${formatGBP(sumPricingPlans)})`,
       render: (item) => formatGBP(item.amountReceivedSum),
       width: '250px',
     },
@@ -723,7 +787,7 @@ const DashboardPage: FC = () => {
     },
     {
       id: 'amountReceivedSum',
-      title: `Amount Received (${formatGBP(sumStores)})`,
+      title: `Received (${formatGBP(sumStores)})`,
       render: (item) => formatGBP(item.amountReceivedSum),
       width: '250px',
     },
@@ -734,29 +798,34 @@ const DashboardPage: FC = () => {
       id: 'serviceType',
       title: `Service Type (${serviceTypeLocationRows.length})`,
       render: (item) => item.serviceType,
-      width: '250px',
     },
     {
       id: 'parseLocation',
       title: `Location`,
       render: (item) => item.parseLocation,
-      width: '250px',
+      width: "275px"
     },
     {
       id: 'amountReceivedSum',
-      title: `Amount Received`,
+      title: `Received`,
       render: (item) => formatGBP(item.amountReceivedSum),
-      width: '250px',
+    },
+    {
+      id: 'amountExpensedSum',
+      title: `Expensed (${formatGBP(sumRows(serviceTypeLocationRows, 'amountExpensedSum'))})`,
+      render: (item) => formatGBP(item.amountExpensedSum),
+    },
+    {
+      id: 'sum',
+      title: `Sum (${formatGBP(sumRows(serviceTypeLocationRows, 'sum'))})`,
+      render: (item) => formatGBP(item.sum),
+      infoTooltipProps: tooltips.sum,
     },
     {
       id: 'membershipBenefitValueSum',
-      title: `Membership Value (${formatGBP(sumRows(serviceTypeLocationRows, 'membershipBenefitValueSum'))})`,
+      title: `MV (${formatGBP(sumRows(serviceTypeLocationRows, 'membershipBenefitValueSum'))})`,
       render: (item) => formatGBP(item.membershipBenefitValueSum),
-      width: '250px',
-      infoTooltipProps: {
-        content:
-          'The value of bookings from membership benefits',
-      }
+      infoTooltipProps: tooltips.membershipBenefitValue,
     },
   ];
 
@@ -783,23 +852,28 @@ const DashboardPage: FC = () => {
       id: 'parseLocation',
       title: `Location`,
       render: (item) => item.parseLocation,
-      // width: '250px',
+      width: '275px',
     },
     {
       id: 'amountReceivedSum',
-      title: `Amount Received (${formatGBP(sumRows(serviceTermYearLocationFilteredRows, 'amountReceivedSum'))})`,
+      title: `R (${formatGBP(sumRows(serviceTermYearLocationFilteredRows, 'amountReceivedSum'))})`,
       render: (item) => formatGBP(item.amountReceivedSum),
-      // width: '250px',
+
+    },
+    {
+      id: 'amountExpensedSum',
+      title: `E (${formatGBP(sumRows(serviceTermYearLocationFilteredRows, 'amountExpensedSum'))})`,
+      render: (item) => formatGBP(item.amountExpensedSum),
+    },
+    {
+      id: 'sum',
+      title: `S (${formatGBP(sumRows(serviceTermYearLocationFilteredRows, 'sum'))})`,
+      render: (item) => formatGBP(item.sum),
     },
     {
       id: 'membershipBenefitValueSum',
-      title: `Membership Value (${formatGBP(sumRows(serviceTermYearLocationFilteredRows, 'membershipBenefitValueSum'))})`,
+      title: `MV (${formatGBP(sumRows(serviceTermYearLocationFilteredRows, 'membershipBenefitValueSum'))})`,
       render: (item) => formatGBP(item.membershipBenefitValueSum),
-      // width: '250px',
-      infoTooltipProps: {
-        content:
-          'The value of bookings from membership benefits',
-      }
     },
   ];
 
@@ -819,6 +893,7 @@ const DashboardPage: FC = () => {
     setFilters({});
   }, [serviceTermYearLocationRows]);
 
+
   useEffect(() => {
     let filteredRows = structuredClone(serviceTermYearLocationRows);
 
@@ -828,12 +903,25 @@ const DashboardPage: FC = () => {
         filteredRows = filteredRows.filter(i => i[key] && i[key] === value.value);
       }
     }
+
+    filteredRows.sort(function (a, b) {
+      const sortKey = sorting.key;
+      if (a[sortKey] < b[sortKey]) { return sorting.direction==="A-Z"?-1:1; }
+      if (a[sortKey] > b[sortKey]) { return sorting.direction==="A-Z"?1:-1; }
+      return 0;
+    })
+
     setServiceTermYearLocationFilteredRows(filteredRows);
-  }, [filters]);
+  }, [filters, sorting]);
+
 
 
   const tableFilters =
     <TableToolbar.ItemGroup position="start">
+       <TableToolbar.Item>
+  <Filter />
+      </TableToolbar.Item>
+
       <TableToolbar.Item>
         <Dropdown
           options={getDropdownOptionsFromRows(serviceTermYearLocationRows, "serviceType", "All Service Types")}
@@ -877,40 +965,76 @@ const DashboardPage: FC = () => {
           onSelect={(parseLocation) => setFilters({ ...filters, parseLocation })}
           valueParser={({ value }) => value}
         />
+
+      </TableToolbar.Item>
+      <TableToolbar.Item>
+       {sorting.direction ==="A-Z" ? <SortAZ /> : <SortZA />}
+      </TableToolbar.Item>
+      <TableToolbar.Item>
+        <Dropdown
+          options={[
+            { id: 'amountReceivedSum', value: 'Received' },
+            { id: 'amountExpensedSum', value: 'Expensed' },
+            { id: 'sum', value: 'Sum' },
+            { id: 'parseLocation', value: 'Location' },
+            { id: 'serviceType', value: 'Service' },
+            { id: 'year', value: 'Year' },
+            { id: 'term', value: 'Term' },
+          ]}
+          selectedId={sorting?.key}
+          border="round"
+          size="small"
+          popoverProps={{ appendTo: 'window' }}
+          onSelect={(key) => setSorting({ ...sorting, ...{ key: key.id } })}
+          valueParser={({ value }) => value}
+        />
+        </TableToolbar.Item>
+          <TableToolbar.Item>
+        <Dropdown
+          options={[
+            { id: 'Z-A', value: 'Z-A' },
+            { id: 'A-Z', value: 'A-Z' },
+          ]}
+          selectedId={sorting?.direction}
+          border="round"
+          size="small"
+          popoverProps={{ appendTo: 'window' }}
+          onSelect={(direction) => setSorting({ ...sorting, ...{ direction: direction.value } })}
+          valueParser={({ value }) => value}
+        />
       </TableToolbar.Item>
     </TableToolbar.ItemGroup>
 
 
   const taxTables = [
-    { title: `Tax Years`, rows: taxYearRows, columns: taxYearColumns },
-    { title: `Tax Quarters`, rows: taxQuarterRows, columns: taxQuarterColumns, accordian: true },
+    { title: `Tax Years`, rows: taxYearRows, columns: taxYearColumns, accordion: true },
+    { title: `Tax Quarters`, rows: taxQuarterRows, columns: taxQuarterColumns, accordion: true },
   ]
 
   const bookingsTables = [
-    { title: `Teachers`, rows: teacherRows, columns: teacherColumns, accordian: true },
-    { title: `Teachers Expenses [BETA]`, rows: expensesTeachersRows, columns: expensesTeachersColumns, accordian: true },
-    { title: `Locations`, rows: locationRows, columns: locationColumns, accordian: true },
-    { title: `Service Type`, rows: serviceTypeRows, columns: serviceTypeColumns, accordian: true },
-    { title: `Service Type & Location`, rows: serviceTypeLocationRows, columns: serviceTypeLocationColumns, accordian: true },
-    { title: `Service Type, Term, Year & Location`, rows: serviceTermYearLocationFilteredRows, columns: serviceTermYearLocationColumns, accordian: true, toolbar: tableFilters },
-    { title: `Service`, rows: serviceRows, columns: serviceColumns, accordian: true },
-    { title: `Term`, rows: termRows, columns: termColumns, accordian: true },
-    { title: `Term & Year`, rows: termYearRows, columns: termYearColumns, accordian: true },
+    { title: `Service Type, Term, Year & Location`, rows: serviceTermYearLocationFilteredRows, columns: serviceTermYearLocationColumns, accordion: true, toolbar: tableFilters },
+    { title: `Teachers`, rows: teacherRows, columns: teacherColumns, accordion: true },
+    { title: `Locations`, rows: locationRows, columns: locationColumns, accordion: true },
+    { title: `Service Type`, rows: serviceTypeRows, columns: serviceTypeColumns, accordion: true },
+    { title: `Service Type & Location`, rows: serviceTypeLocationRows, columns: serviceTypeLocationColumns, accordion: true },
+    { title: `Service`, rows: serviceRows, columns: serviceColumns, accordion: true },
+    { title: `Term`, rows: termRows, columns: termColumns, accordion: true },
+    { title: `Term & Year`, rows: termYearRows, columns: termYearColumns, accordion: true },
   ]
 
   const eventTables = [
-    { title: `Events`, rows: eventRows, columns: eventColumns, accordian: true },
+    { title: `Events`, rows: eventRows, columns: eventColumns, accordion: true },
   ]
 
   const storesTables = [
-    { title: `Stores`, rows: storesRows, columns: storesColumns, accordian: true },
+    { title: `Stores`, rows: storesRows, columns: storesColumns, accordion: true },
   ]
 
   const pricingPlanTables = [
-    { title: `Pricing Plans`, rows: pricingPlanRows, columns: pricingPlanColumns, accordian: true },
+    { title: `Pricing Plans`, rows: pricingPlanRows, columns: pricingPlanColumns, accordion: true },
   ]
   const invoiceTables = [
-    { title: `Invoices`, rows: invoiceRows, columns: invoiceColumns, accordian: true },
+    { title: `Invoices`, rows: invoiceRows, columns: invoiceColumns, accordion: true },
   ]
 
 
@@ -931,7 +1055,7 @@ const DashboardPage: FC = () => {
       </Table>
     );
 
-    const content = table.accordian ? (
+    const content = table.accordion ? (
       <Accordion
         items={[
           accordionItemBuilder({
@@ -1001,7 +1125,7 @@ const DashboardPage: FC = () => {
                               {running ? 'Running...' : 'Process Data'}
                             </Button>
 
-                             <Button
+                            <Button
                               onClick={removeAnalytics}
                               disabled={running}
                               skin="destructive"
@@ -1010,18 +1134,18 @@ const DashboardPage: FC = () => {
                             </Button>
                           </Box>
 
-                       
+
 
                           <Box display="flex" gap="12px">
                             <Button
-                               onClick={() => lockOrUnlockAnalytics(true)}
+                              onClick={() => lockOrUnlockAnalytics(true)}
                               disabled={running}
                               priority="secondary"
                             >
                               {running ? 'Running...' : 'Lock'}
                             </Button>
                             <Button
-                               onClick={() => lockOrUnlockAnalytics(false)}
+                              onClick={() => lockOrUnlockAnalytics(false)}
                               disabled={running}
                               priority="secondary"
                             >
@@ -1036,54 +1160,58 @@ const DashboardPage: FC = () => {
               </Card>
             </Cell>
 
+
+
             <Cell span={12}>
+
               <Card>
-                <Box padding="SP4" direction="vertical" gap="SP4">
+                <Card.Header
+                  title={status}
+                  subtitle={subStatus}
+                  suffix={
+                    <Box padding="SP4" direction="vertical" gap="SP4">
 
-                  <Box direction="vertical" gap="SP1">
-                    <Text weight="bold">{status}</Text>
-                    <Text secondary>{subStatus}</Text>
-                  </Box>
-                </Box>
+                      <Box
+                        direction="horizontal"
+                        gap="SP3"
 
+                        align="right"
+                      >
+                        <Button onClick={runExportToCSV} disabled={running}>
+                          Export CSV
+                        </Button>
 
+                        <Button onClick={() => window.open(CMSlink, "_blank")}>
+                          Open CMS
+                        </Button>
+                      </Box>
+                    </Box>
+                  }
+                />
               </Card>
+
+
             </Cell>
 
             <Cell span={12}>
+
               <Card>
-                <Box padding="SP4" direction="vertical" gap="SP4">
-
-                  <Box
-                    direction="horizontal"
-                    gap="SP3"
-
-                    align="right"
-                  >
-                    <Button onClick={runExportToCSV} disabled={running}>
-                      Export CSV
+                <Card.Header
+                  title="Dates of Purchase"
+                  subtitle={dateRange}
+                  suffix={
+                    <Button size="small" priority="secondary" onClick={runSums} disabled={running}>
+                      Refresh
                     </Button>
+                  }
+                />
 
-                    <Button onClick={() => window.open(CMSlink, "_blank")}>
-                      Open CMS
-                    </Button>
-                  </Box>
+                <Box paddingTop="SP1" paddingBottom="SP1">
+                  <Divider />
                 </Box>
 
-              </Card>
-            </Cell>
-
-            <Cell span={12}>
-              <Card>
                 <Box padding="SP4" direction="vertical" gap="SP4">
-                  <Heading
-                    size="medium"
-                  >Dates of Purchase
-                  </Heading>
-                  <Heading size="medium" >{dateRange}</Heading>
-                  <Box paddingTop="SP1" paddingBottom="SP1">
-                    <Divider />
-                  </Box>
+
 
                   <DatePickerWithShortcuts
                     label="Start Date"
@@ -1109,32 +1237,36 @@ const DashboardPage: FC = () => {
 
                 </Box>
               </Card>
+
+
             </Cell>
 
 
 
             <Cell span={12}>
-              <Card>
-                <Box padding="SP3" direction="vertical" gap="SP2">
+              <Card              >
+                <Card.Header
+                  title={`${formatGBP(sumRevenue + sumExpenses)}`}
+                  subtitle={`+${formatGBP(sumRevenue)}, ${formatGBP(sumExpenses)}`}
+                />
+                <Box padding="SP4" direction="vertical" gap="SP4">
 
+                  <Accordion
+                    items={[
+                      accordionItemBuilder({
+                        title: "Summary",
+                        children: (
+                          <Table
+                            data={summaryRows}
+                            columns={summaryColumns}
+                          ></Table>
+                        ),
+                      }),
 
-
-
-                  <Text>Bookings: {formatGBP(sumBookings)}</Text>
-                  <Text>Events: {formatGBP(sumEvents)}</Text>
-                  <Text>Invoices: {formatGBP(sumInvoices)}</Text>
-                  <Text>Stores: {formatGBP(sumStores)}</Text>
-                  <Text>Pricing Plans: {formatGBP(sumPricingPlans)}</Text>
-                  <Text>Expenses: {formatGBP(sumExpenses)}</Text>
-
-                  <Box paddingTop="SP2" paddingBottom="SP2">
-                    <Divider />
-                  </Box>
-
-                  <Text weight="bold">
-                    Total: {formatGBP(sumRows(taxYearRows, 'amountReceivedSum'))}
-                  </Text>
+                    ]}
+                  />
                 </Box>
+
               </Card>
             </Cell>
 
@@ -1150,15 +1282,12 @@ const DashboardPage: FC = () => {
 
             <Cell span={12}>
               <Card>
-                <Box padding="SP3" direction="vertical" gap="SP2">
-
-                  <Heading size="medium" >Bookings</Heading>
-                  <Box padding="SP4" direction="vertical" gap="SP4">
-                    <>
-                      {bookingsTables.map(mapTables)}
-                    </>
-                  </Box>
+                <Box padding="SP4" direction="vertical" gap="SP4">
+                  <>
+                    {bookingsTables.map(mapTables)}
+                  </>
                 </Box>
+
               </Card>
             </Cell>
 

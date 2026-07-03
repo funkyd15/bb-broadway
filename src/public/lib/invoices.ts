@@ -22,32 +22,36 @@ export async function queryInvoices(startDate: Date, endDate: Date, statusState:
             const invoice = i.invoice;
             const lineItems = invoice.lineItems;
             const lineItemNames = lineItems.filter((i:any)=>i.name).map((i:any)=>i.name.trim()).join(";");
-            invoice.payments.forEach((payment: any) => {
-                const createdDate = payment.date ? new Date(payment.date) : new Date(invoice.dates.issueDate);
-                const createdDateYYYYMMDD = YYYYMMDD(createdDate);
+            const payments = invoice?.payments || [];
+            if(payments.length > 0){
 
-                const paymentStatus =invoice.status;
-                const amountReceived =paymentStatus === "Void" ? 0 :  payment.amount ;
-                const parsedItem = {
-                    _id: payment.id,
-                    invoiceId:invoice.id.id,
-                    invoiceNumber: invoice.number,
-                    createdDate: createdDateYYYYMMDD,
-                    taxYear: getUKTaxYear(createdDate, TaxYearFormat.Year),
-                    taxQuarter: getUKTaxYear(createdDate, TaxYearFormat.Quarter),
-                    taxMonth: getUKTaxYear(createdDate, TaxYearFormat.Month),
-                    link: `https://manage.wix.com/dashboard/0210b701-c715-482e-bdcf-2e8185181308/wix-invoices`,
-                    paymentStatus,
-                    title:invoice.title || invoice.number,
-                    amountReceived,
-                    email: invoice.customer.email,
-                    item: config.includeItem ? invoice : undefined,
-                    lineItems,
-                    lineItemNames,
-
-                }
-                parsedItems.push(parsedItem);
-            });
+                payments.forEach((payment: any) => {
+                    const createdDate = payment.date ? new Date(payment.date) : new Date(invoice.dates.issueDate);
+                    const createdDateYYYYMMDD = YYYYMMDD(createdDate);
+    
+                    const paymentStatus =invoice.status;
+                    const amountReceived =paymentStatus === "Void" ? 0 :  payment.amount ;
+                    const parsedItem = {
+                        _id: payment.id,
+                        invoiceId:invoice.id.id,
+                        invoiceNumber: invoice.number,
+                        createdDate: createdDateYYYYMMDD,
+                        taxYear: getUKTaxYear(createdDate, TaxYearFormat.Year),
+                        taxQuarter: getUKTaxYear(createdDate, TaxYearFormat.Quarter),
+                        taxMonth: getUKTaxYear(createdDate, TaxYearFormat.Month),
+                        link: `https://manage.wix.com/dashboard/0210b701-c715-482e-bdcf-2e8185181308/wix-invoices`,
+                        paymentStatus,
+                        title:invoice.title || invoice.number,
+                        amountReceived,
+                        email: invoice.customer.email,
+                        item: config.includeItem ? invoice : undefined,
+                        lineItems,
+                        lineItemNames,
+    
+                    }
+                    parsedItems.push(parsedItem);
+                });
+            }
 
         });
 

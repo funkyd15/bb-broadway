@@ -50,6 +50,7 @@ export async function queryEventsOrders(startDate: Date, endDate: Date, statusSt
             const createdDate = i.created;
             const createdDateYYYYMMDD = createdDate.toISOString().split("T")[0];
             const findEvent = eventItems.find(n => n._id === i.eventId);
+            const eventTitle = (findEvent?.title || "--BLANK--").trim();
 
             const parsedItem = {
                 _id: i.reservationId,
@@ -61,12 +62,12 @@ export async function queryEventsOrders(startDate: Date, endDate: Date, statusSt
                 tickets: i.tickets,
                 ticketsQuantity: i.ticketsQuantity,
                 event: config.includeItem ? findEvent : undefined,
-                eventTitle: findEvent?.title,
-                title: findEvent?.title,
+                eventTitle: eventTitle,
+                title: eventTitle,
                 email: i.email,
                 amountReceived: Number(i.invoice?.revenue?.value),
                 couponCode: i.invoice?.discount?.discounts[0]?.coupon?.code,
-                link: `https://manage.wix.com/dashboard/0210b701-c715-482e-bdcf-2e8185181308/events/event/${findEvent?._id}/orders/${i.orderNumber}`,
+                link:findEvent?._id ? `https://manage.wix.com/dashboard/0210b701-c715-482e-bdcf-2e8185181308/events/event/${findEvent?._id}/orders/${i.orderNumber}` : undefined,
                 paymentStatus: i.status,
               item: config.includeItem ? i : undefined,
             }

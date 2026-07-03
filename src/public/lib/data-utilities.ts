@@ -53,7 +53,19 @@ export async function bulkSaveSets(array: any[], collection: string, statusState
     let bulkSets = [];
     let makeSet = [];
     array = await translateValues(array);
+    
+    if(array && array.length>0){
+         array.forEach((item) => {
+        (Object.keys(item) as Array<keyof typeof item>).forEach((key) => {
+            const value = item[key];
 
+            if (typeof value === "string") {
+                item[key] = value.trim() as typeof value;
+            }
+        });
+    });
+    }
+   
     for (let i = 0; i < array.length; i++) {
         let item = array[i];
         if (getObjectSizeInKB(makeSet.concat(item)) > 1000 || makeSet.length === 1000) {
@@ -147,38 +159,6 @@ async function translateValues(array: any[]) {
 
     return array;
 }
-// export async function sumAmountReceived(collection: string, startDate: string, endDate: string) {
-
-//     let allItems = [];
-//     let results = await items.query(collection).ge('createdDate', startDate).le('createdDate', endDate)
-//         .limit(1000)
-//         .find();
-
-//     for (var i = 0; i < results.items.length; i++) {
-//         allItems.push(results.items[i]);
-
-//     }
-
-//     while (results.hasNext()) {
-//         results = await results.next();
-
-
-//         for (var j = 0; j < results.items.length; j++) {
-//             allItems.push(results.items[j]);
-
-//         }
-//     }
-
-//     const sumReceived = allItems.reduce(
-//         (accumulator, currentItem) => accumulator + currentItem.amountReceived,
-//         0,
-//     );
-
-//     // console.log({sumReceived});
-
-//     return sumReceived;
-
-// }
 
 export async function sumAmountReceived(collection: string, startDate: string, endDate: string) {
 
@@ -210,7 +190,7 @@ export async function sumAmountExpensed(collection: string, startDate: string, e
         .aggregate(collection)
         .filter(filter)
         .sum('amountExpensed')
-        .descending('amountExpensedSum')
+        .ascending('amountExpensedSum')
         .run();
 
 
@@ -225,6 +205,32 @@ export async function aggregateCollectionWithMembershipValue(
     group: string,
 ): Promise<any[]> {
 
+    const [amountSumAggResults, membershipBenefitSumAggResults] = await Promise.all(
+        [
+            aggregateCollection(collection, startDate, endDate, group, 'amountReceived'),
+            aggregateCollection(collection, startDate, endDate, group, 'membershipBenefitValue'),
+        ]
+    )
+
+
+    amountSumAggResults.forEach(a => {
+        const findMembership = membershipBenefitSumAggResults.find(i => i._id === a._id);
+        const membershipBenefitValueSum = findMembership?.membershipBenefitValueSum || 0;
+        a.membershipBenefitValueSum = membershipBenefitValueSum;
+        a.amountAndMembershipValueSum = membershipBenefitValueSum + a.amountReceivedSum;
+
+    });
+
+    return amountSumAggResults;
+
+}
+export async function aggregateCollectionWithMembershipValueAndExpenses(
+    collection: string,
+    startDate: string,
+    endDate: string,
+    group: string,
+): Promise<any[]> {
+
     const [amountSumAggResults, membershipBenefitSumAggResults, expensesSumAggResults] = await Promise.all(
         [
             aggregateCollection(collection, startDate, endDate, group, 'amountReceived'),
@@ -232,7 +238,7 @@ export async function aggregateCollectionWithMembershipValue(
             aggregateCollection(`expensesAnalytics`, startDate, endDate, group, 'amountExpensed', true),
         ]
     )
-    // console.log("aggregateCollectionWithMembershipValue",membershipBenefitSumAggResults,amountSumAggResults);
+
 
     amountSumAggResults.forEach(a => {
         const findMembership = membershipBenefitSumAggResults.find(i => i._id === a._id);
@@ -242,11 +248,22 @@ export async function aggregateCollectionWithMembershipValue(
 
 
         const findExpenses = expensesSumAggResults.find(i => i._id === a._id);
-        const expensesSum = findExpenses?.amountExpensedSum || 0;
-        a.expensesSum = expensesSum;
+        const amountExpensedSum = findExpenses?.amountExpensedSum || 0;
 
-        a.sum = a.amountReceivedSum + a.membershipBenefitValueSum + a.expensesSum;
+        a.amountExpensedSum = amountExpensedSum;
+
+        a.sum = a.amountReceivedSum + a.membershipBenefitValueSum + a.amountExpensedSum;
     });
+
+    expensesSumAggResults.forEach(e => {
+
+        const findAmount = amountSumAggResults.find(i => i._id === e._id);
+        if (!findAmount) {
+            amountSumAggResults.push(e)
+        }
+
+    });
+
 
 
 
@@ -298,11 +315,11 @@ export async function aggregateCollection(
 
     }
 
-    if (ignoreBlanks && group) {
+    // if (ignoreBlanks && group) {
 
-        console.log("ignoreBlanks && group", ignoreBlanks, group, allItems);
+    // console.log("ignoreBlanks && group", ignoreBlanks, group, allItems);
 
-    }
+    // }
 
     return allItems as any[];
 
@@ -318,15 +335,19 @@ export async function aggregateBookingsServiceTermYearLocation(
         .ge('createdDate', startDate)
         .le('createdDate', endDate);
 
-    let agg = items
-        .aggregate('bookingsAnalytics')
-        .filter(filter)
-        .descending('amountReceivedSum')
-        // .group('serviceType', 'termYear', 'parseLocation')
-        .group('serviceType', 'year', 'term', 'parseLocation')
-        .limit(1000)
 
-    let resultsAmount = await agg.sum('amountReceived').run();
+    function formAgg(collection: string) {
+        return items
+            .aggregate(collection)
+            .filter(filter)
+            .descending('amountReceivedSum')
+            .group('serviceType', 'year', 'term', 'parseLocation')
+            .limit(1000)
+    }
+
+
+
+    let resultsAmount = await formAgg('bookingsAnalytics').sum('amountReceived').run();
 
     allItems.push(...resultsAmount.items)
 
@@ -336,7 +357,7 @@ export async function aggregateBookingsServiceTermYearLocation(
         allItems.push(...resultsAmount.items)
     }
 
-    let resultsBenefit = await agg.sum('membershipBenefitValue').run();
+    let resultsBenefit = await formAgg('bookingsAnalytics').sum('membershipBenefitValue').run();
     allItems.push(...resultsBenefit.items)
 
     // console.log("resultsBenefit", resultsBenefit);
@@ -345,7 +366,22 @@ export async function aggregateBookingsServiceTermYearLocation(
         allItems.push(...resultsBenefit.items)
     }
 
+    let resultsExpenses = await formAgg('expensesAnalytics').sum('amountExpensed').run();
+    allItems.push(...resultsExpenses.items)
+
+    while (resultsExpenses.hasNext()) {
+        resultsExpenses = await resultsExpenses.next();
+        allItems.push(...resultsExpenses.items)
+    }
+
+
     allItems = combineArrayByKey(allItems, "_id");
+
+    allItems = allItems.filter(i => i._id?.serviceType && i._id?.year && i._id?.term && i._id?.parseLocation);
+
+    allItems.forEach(i => {
+        i.sum = (i.amountReceivedSum || 0) + (i.membershipBenefitValueSum || 0) + (i.amountExpensedSum || 0);
+    });
 
     // console.log("aggregateBookingsServiceLocation", allItems);
 
@@ -362,34 +398,44 @@ export async function aggregateBookingsServiceLocation(
         .ge('createdDate', startDate)
         .le('createdDate', endDate);
 
-    let agg = items
-        .aggregate('bookingsAnalytics')
-        .filter(filter)
-        .ascending('serviceType')
-        .descending('amountReceivedSum')
-        .group('serviceType', 'parseLocation')
-        .limit(1000)
+    function formAgg(collection: string) {
+        return items
+            .aggregate(collection)
+            .filter(filter)
+            .ascending('serviceType')
+            .descending('amountReceivedSum')
+            .group('serviceType', 'parseLocation')
+            .limit(1000)
+    }
 
-    let resultsAmount = await agg.sum('amountReceived').run();
+    let resultsAmount = await formAgg('bookingsAnalytics').sum('amountReceived').run();
 
     allItems.push(...resultsAmount.items)
 
-    // console.log(results);
     while (resultsAmount.hasNext()) {
         resultsAmount = await resultsAmount.next();
         allItems.push(...resultsAmount.items)
     }
 
-    let resultsBenefit = await agg.sum('membershipBenefitValue').run();
+    let resultsBenefit = await formAgg('bookingsAnalytics').sum('membershipBenefitValue').run();
     allItems.push(...resultsBenefit.items)
 
-    // console.log("resultsBenefit", resultsBenefit);
     while (resultsBenefit.hasNext()) {
         resultsBenefit = await resultsBenefit.next();
         allItems.push(...resultsBenefit.items)
     }
 
+    let resultsExpenses = await formAgg('expensesAnalytics').sum('amountExpensed').run();
+    allItems.push(...resultsExpenses.items)
+
+    while (resultsExpenses.hasNext()) {
+        resultsExpenses = await resultsExpenses.next();
+        allItems.push(...resultsExpenses.items)
+    }
+
     allItems = combineArrayByKey(allItems, "_id");
+
+    allItems = allItems.filter(i => i._id?.serviceType && i._id?.parseLocation);
 
     // console.log("aggregateBookingsServiceLocation", allItems);
 
@@ -404,25 +450,21 @@ export async function aggregateAnalyticsCollections(
     group: string,
 ) {
     //take mutliple CMS, aggreate by tax year/quarter and reduce sum into a 'single combined' result
-    const promises = collections.map(i =>
+    let promises = collections.map(i =>
         // aggregateCollection(i, startDate, endDate, group)
         aggregateCollectionWithMembershipValue(i, startDate, endDate, group)
     );
-
-
+    promises.push(aggregateCollection(`expensesAnalytics`, startDate, endDate, group, 'amountExpensed', true));
 
     const results = await Promise.all(promises);
 
     // console.log("aggregateAnalyticsCollections", results);
-
 
     const combineResults = combineResultsByKey(
         results,
         group,
     );
 
-
-    // console.log("aggregateAnalyticsCollections", combineResults);
 
     //descending
     combineResults.sort(function (a, b) {
@@ -431,6 +473,7 @@ export async function aggregateAnalyticsCollections(
         if (a[sortKey] > b[sortKey]) { return -1; }
         return 0;
     })
+
 
     return combineResults;
 }
