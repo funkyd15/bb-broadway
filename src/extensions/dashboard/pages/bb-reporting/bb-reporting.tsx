@@ -19,7 +19,9 @@ import {
   Dropdown,
   TableToolbar,
   ToggleButton,
-
+  MultiSelectCheckbox,
+  FormField,
+  Modal,
 
 } from '@wix/design-system';
 
@@ -27,6 +29,11 @@ import {
   Filter,
   SortAZ,
   SortZA,
+  Dismiss,
+  UploadExport,
+  DataCollection,
+  Refresh,
+  DateSmall,
 } from "@wix/wix-ui-icons-common/odeditor";
 
 import type { TableColumn } from '@wix/patterns';
@@ -125,6 +132,28 @@ const DashboardPage: FC = () => {
       : new Date(year - 1, 3, 1);
 
   };
+
+  function addToFilter(value: string, key: string) {
+
+    let valuesArray = filters[key] || [];
+    valuesArray.push(value);
+    valuesArray = [...new Set(valuesArray)];
+    valuesArray.sort();
+
+    setFilters({ ...filters, [key]: valuesArray });
+  }
+
+  function removeFromFilter(value: string, key: string) {
+
+    let valuesArray = filters[key] || [];
+    if (valuesArray.includes(value)) {
+      valuesArray = valuesArray.filter(i => i !== value);
+      valuesArray.sort();
+    }
+
+
+    setFilters({ ...filters, [key]: valuesArray });
+  }
 
   function processRows(rows: any[]) {
     rows.forEach(r => {
@@ -742,7 +771,7 @@ const DashboardPage: FC = () => {
       title: `Expensed (${formatGBP(sumRows(eventRows, 'amountExpensedSum'))})`,
       render: (item) => formatGBP(item.amountExpensedSum),
     },
-     {
+    {
       id: 'sum',
       title: `Sum (${formatGBP(sumRows(eventRows, 'sum'))})`,
       render: (item) => formatGBP(item.sum),
@@ -878,11 +907,13 @@ const DashboardPage: FC = () => {
   ];
 
 
-  function getDropdownOptionsFromRows(rows: any[], key: string, allValue: string) {
+  function getDropdownOptionsFromRows(rows: any[], key: string, allValue?: string) {
     const values = [...new Set(rows.map(i => i[key]))].sort();
     // const options = values.map((i: any, index: number) => ({ id: (index + 1).toString(), value: i }));
     const options = values.map((i: any, index: number) => ({ id: i, value: i }));
-    options.unshift({ id: "0", value: allValue });
+    if (allValue) {
+      options.unshift({ id: "0", value: allValue });
+    }
 
     return options;
 
@@ -890,120 +921,121 @@ const DashboardPage: FC = () => {
 
 
   useEffect(() => {
-    setFilters({});
+    filterAndSortServiceTermYearLocationRow();
   }, [serviceTermYearLocationRows]);
 
 
   useEffect(() => {
+    filterAndSortServiceTermYearLocationRow();
+  }, [filters, sorting]);
+
+  function filterAndSortServiceTermYearLocationRow() {
     let filteredRows = structuredClone(serviceTermYearLocationRows);
 
     for (const [key, value] of Object.entries(filters)) {
       //if not any
-      if (value.id !== "0") {
-        filteredRows = filteredRows.filter(i => i[key] && i[key] === value.value);
+      // if (value.id !== "0") {
+      //   filteredRows = filteredRows.filter(i => i[key] && i[key] === value.value);
+      // }
+      if (value && value.length > 0) {
+        filteredRows = filteredRows.filter(i => i[key] && value.includes(i[key]));
       }
     }
 
     filteredRows.sort(function (a, b) {
       const sortKey = sorting.key;
-      if (a[sortKey] < b[sortKey]) { return sorting.direction==="A-Z"?-1:1; }
-      if (a[sortKey] > b[sortKey]) { return sorting.direction==="A-Z"?1:-1; }
+      if (a[sortKey] < b[sortKey]) { return sorting.direction === "A-Z" ? -1 : 1; }
+      if (a[sortKey] > b[sortKey]) { return sorting.direction === "A-Z" ? 1 : -1; }
       return 0;
     })
 
     setServiceTermYearLocationFilteredRows(filteredRows);
-  }, [filters, sorting]);
+  }
+
+  const makeMultiCheckbox = (key: string, placeholder: string) => {
+    return (<MultiSelectCheckbox
+      size="medium"
+      placeholder={placeholder}
+      selectedOptions={filters[key] || []}
+      onSelect={(value) => addToFilter(value, key)}
+      onDeselect={(value) => removeFromFilter(value, key)}
+      options={getDropdownOptionsFromRows(serviceTermYearLocationRows, key)}
+      clearButton
+      onClear={() => setFilters({ ...filters, [key]: [] })}
+      popoverProps={{ appendTo: 'window' }}
+
+    />);
+  }
 
 
 
   const tableFilters =
-    <TableToolbar.ItemGroup position="start">
-       <TableToolbar.Item>
-  <Filter />
-      </TableToolbar.Item>
-
-      <TableToolbar.Item>
-        <Dropdown
-          options={getDropdownOptionsFromRows(serviceTermYearLocationRows, "serviceType", "All Service Types")}
-          selectedId={filters?.serviceType?.id || "0"}
-          border="round"
-          size="small"
-          popoverProps={{ appendTo: 'window' }}
-          onSelect={(serviceType) => setFilters({ ...filters, serviceType })}
-          valueParser={({ value }) => value}
-        />
-      </TableToolbar.Item>
-      <TableToolbar.Item>
-        <Dropdown
-          options={getDropdownOptionsFromRows(serviceTermYearLocationRows, "year", "All Years")}
-          selectedId={filters?.year?.id || "0"}
-          border="round"
-          size="small"
-          popoverProps={{ appendTo: 'window' }}
-          onSelect={(year) => setFilters({ ...filters, year })}
-          valueParser={({ value }) => value}
-        />
-      </TableToolbar.Item>
-      <TableToolbar.Item>
-        <Dropdown
-          options={getDropdownOptionsFromRows(serviceTermYearLocationRows, "term", "All Terms")}
-          selectedId={filters?.term?.id || "0"}
-          border="round"
-          size="small"
-          popoverProps={{ appendTo: 'window' }}
-          onSelect={(term) => setFilters({ ...filters, term })}
-          valueParser={({ value }) => value}
-        />
-      </TableToolbar.Item>
-      <TableToolbar.Item>
-        <Dropdown
-          options={getDropdownOptionsFromRows(serviceTermYearLocationRows, "parseLocation", "All Locations")}
-          selectedId={filters?.parseLocation?.id || "0"}
-          border="round"
-          size="small"
-          popoverProps={{ appendTo: 'window' }}
-          onSelect={(parseLocation) => setFilters({ ...filters, parseLocation })}
-          valueParser={({ value }) => value}
-        />
-
-      </TableToolbar.Item>
-      <TableToolbar.Item>
-       {sorting.direction ==="A-Z" ? <SortAZ /> : <SortZA />}
-      </TableToolbar.Item>
-      <TableToolbar.Item>
-        <Dropdown
-          options={[
-            { id: 'amountReceivedSum', value: 'Received' },
-            { id: 'amountExpensedSum', value: 'Expensed' },
-            { id: 'sum', value: 'Sum' },
-            { id: 'parseLocation', value: 'Location' },
-            { id: 'serviceType', value: 'Service' },
-            { id: 'year', value: 'Year' },
-            { id: 'term', value: 'Term' },
-          ]}
-          selectedId={sorting?.key}
-          border="round"
-          size="small"
-          popoverProps={{ appendTo: 'window' }}
-          onSelect={(key) => setSorting({ ...sorting, ...{ key: key.id } })}
-          valueParser={({ value }) => value}
-        />
+    <TableToolbar>
+      <TableToolbar.ItemGroup position="start">
+        <TableToolbar.Item>
+          <Filter />
         </TableToolbar.Item>
-          <TableToolbar.Item>
-        <Dropdown
-          options={[
-            { id: 'Z-A', value: 'Z-A' },
-            { id: 'A-Z', value: 'A-Z' },
-          ]}
-          selectedId={sorting?.direction}
-          border="round"
-          size="small"
-          popoverProps={{ appendTo: 'window' }}
-          onSelect={(direction) => setSorting({ ...sorting, ...{ direction: direction.value } })}
-          valueParser={({ value }) => value}
-        />
-      </TableToolbar.Item>
-    </TableToolbar.ItemGroup>
+
+        <TableToolbar.Item>
+          {makeMultiCheckbox("serviceType", "Service Type")}
+       
+        </TableToolbar.Item>
+        <TableToolbar.Item>
+          {makeMultiCheckbox("year", "Year")}
+         
+        </TableToolbar.Item>
+        <TableToolbar.Item>
+          {makeMultiCheckbox("term", "Term")}
+         
+        </TableToolbar.Item>
+        <TableToolbar.Item>
+          {makeMultiCheckbox("parseLocation", "Locations")}
+         
+
+        </TableToolbar.Item>
+
+      </TableToolbar.ItemGroup>
+
+      <TableToolbar.ItemGroup position="start">
+        <TableToolbar.Item>
+          {sorting.direction === "A-Z" ? <SortAZ /> : <SortZA />}
+        </TableToolbar.Item>
+        <TableToolbar.Item>
+          <Dropdown
+            options={[
+              { id: 'amountReceivedSum', value: 'Received' },
+              { id: 'amountExpensedSum', value: 'Expensed' },
+              { id: 'sum', value: 'Sum' },
+              { id: 'parseLocation', value: 'Location' },
+              { id: 'serviceType', value: 'Service' },
+              { id: 'year', value: 'Year' },
+              { id: 'term', value: 'Term' },
+            ]}
+            selectedId={sorting?.key}
+            border="round"
+            size="small"
+            popoverProps={{ appendTo: 'window' }}
+            onSelect={(key) => setSorting({ ...sorting, ...{ key: key.id } })}
+            valueParser={({ value }) => value}
+          />
+        </TableToolbar.Item>
+        <TableToolbar.Item>
+          <Dropdown
+            options={[
+              { id: 'Z-A', value: 'Z-A' },
+              { id: 'A-Z', value: 'A-Z' },
+            ]}
+            selectedId={sorting?.direction}
+            border="round"
+            size="small"
+            popoverProps={{ appendTo: 'window' }}
+            onSelect={(direction) => setSorting({ ...sorting, ...{ direction: direction.value } })}
+            valueParser={({ value }) => value}
+          />
+        </TableToolbar.Item>
+      </TableToolbar.ItemGroup>
+
+    </TableToolbar>
 
 
   const taxTables = [
@@ -1082,12 +1114,110 @@ const DashboardPage: FC = () => {
     );
   };
 
+  const [isModalOpened, setModalOpened] = React.useState(false);
+
+  const openModal = () => setModalOpened(true);
+  const closeModal = () => setModalOpened(false);
+
+  const renderModalContent = () => (
+    datePickerUI
+  );
+
+
+  const datePickerUI =
+
+    <Cell span={12}>
+
+      <Card>
+        <Card.Header
+          title="Dates of Purchase"
+          subtitle={dateRange}
+          suffix={
+            <>
+              <Button size="small" priority="secondary" onClick={closeModal} >
+                Close
+                < Dismiss/>
+              </Button>
+            </>
+          }
+        />
+
+        <Box paddingTop="SP1" paddingBottom="SP1">
+          <Divider />
+        </Box>
+
+        <Box padding="SP4" direction="vertical" gap="SP4">
+
+
+          <DatePickerWithShortcuts
+            label="Start Date"
+            value={startDate}
+            onChange={setStartDate}
+            width={w1}
+            mode="start"
+            quarterEndMonths={[3, 6, 9, 12]} // VAT quarters ending Mar, Jun, Sep, Dec
+            disabled={running}
+          />
+
+          <DatePickerWithShortcuts
+            label="End Date"
+            value={endDate}
+            onChange={setEndDate}
+            width={w1}
+            mode="end"
+            quarterEndMonths={[3, 6, 9, 12]} // VAT quarters ending Mar, Jun, Sep, Dec
+            disabled={running}
+          />
+
+
+
+        </Box>
+      </Card>
+
+
+    </Cell>
+
+
+
+
   return (
     <WixDesignSystemProvider>
-      <Page>
+      <Page height="100vh">
         <Page.Header
           title="BB Broadway Reporting"
           subtitle="Bookings, Events & Stores Reporting"
+          actionsBar={
+            <>
+
+              <Box direction="horizontal" gap="SP1">
+              <Button onClick={runExportToCSV} disabled={running} priority="secondary">
+                Export CSV
+                <UploadExport/>
+              </Button>
+
+              <Button onClick={() => window.open(CMSlink, "_blank")} priority="secondary">
+                Open CMS
+                <DataCollection/>
+              </Button>
+                <Button priority="secondary" onClick={runSums} disabled={running}>
+                  Refresh
+                  <Refresh/>
+                </Button>
+
+                <Button onClick={openModal} disabled={running} prefixIcon={<DateSmall />}>
+                  {dateRange}
+                </Button>
+
+                <Modal
+                  isOpen={isModalOpened}
+                  onRequestClose={closeModal}
+                >
+                  {renderModalContent()}
+                </Modal>
+              </Box>
+
+            </>
+          }
         />
 
         <Page.Content>
@@ -1177,13 +1307,13 @@ const DashboardPage: FC = () => {
 
                         align="right"
                       >
-                        <Button onClick={runExportToCSV} disabled={running}>
+                        {/* <Button onClick={runExportToCSV} disabled={running}>
                           Export CSV
                         </Button>
 
                         <Button onClick={() => window.open(CMSlink, "_blank")}>
                           Open CMS
-                        </Button>
+                        </Button> */}
                       </Box>
                     </Box>
                   }
@@ -1193,53 +1323,6 @@ const DashboardPage: FC = () => {
 
             </Cell>
 
-            <Cell span={12}>
-
-              <Card>
-                <Card.Header
-                  title="Dates of Purchase"
-                  subtitle={dateRange}
-                  suffix={
-                    <Button size="small" priority="secondary" onClick={runSums} disabled={running}>
-                      Refresh
-                    </Button>
-                  }
-                />
-
-                <Box paddingTop="SP1" paddingBottom="SP1">
-                  <Divider />
-                </Box>
-
-                <Box padding="SP4" direction="vertical" gap="SP4">
-
-
-                  <DatePickerWithShortcuts
-                    label="Start Date"
-                    value={startDate}
-                    onChange={setStartDate}
-                    width={w1}
-                    mode="start"
-                    quarterEndMonths={[3, 6, 9, 12]} // VAT quarters ending Mar, Jun, Sep, Dec
-                    disabled={running}
-                  />
-
-                  <DatePickerWithShortcuts
-                    label="End Date"
-                    value={endDate}
-                    onChange={setEndDate}
-                    width={w1}
-                    mode="end"
-                    quarterEndMonths={[3, 6, 9, 12]} // VAT quarters ending Mar, Jun, Sep, Dec
-                    disabled={running}
-                  />
-
-
-
-                </Box>
-              </Card>
-
-
-            </Cell>
 
 
 
@@ -1336,9 +1419,9 @@ const DashboardPage: FC = () => {
 
 
 
-
-
         </Page.Content>
+
+
       </Page>
 
 
