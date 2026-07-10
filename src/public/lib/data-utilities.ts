@@ -1,4 +1,4 @@
-import { items } from '@wix/data';
+import { items, collections } from '@wix/data';
 import { YYYYMMDD } from './utilities';
 
 export async function bulkLockOrUnlockAnalytics(collection: string, startDate: string, endDate: string, lock: Boolean, statusState: Function) {
@@ -53,19 +53,19 @@ export async function bulkSaveSets(array: any[], collection: string, statusState
     let bulkSets = [];
     let makeSet = [];
     array = await translateValues(array);
-    
-    if(array && array.length>0){
-         array.forEach((item) => {
-        (Object.keys(item) as Array<keyof typeof item>).forEach((key) => {
-            const value = item[key];
 
-            if (typeof value === "string") {
-                item[key] = value.trim() as typeof value;
-            }
+    if (array && array.length > 0) {
+        array.forEach((item) => {
+            (Object.keys(item) as Array<keyof typeof item>).forEach((key) => {
+                const value = item[key];
+
+                if (typeof value === "string") {
+                    item[key] = value.trim() as typeof value;
+                }
+            });
         });
-    });
     }
-   
+
     for (let i = 0; i < array.length; i++) {
         let item = array[i];
         if (getObjectSizeInKB(makeSet.concat(item)) > 1000 || makeSet.length === 1000) {
@@ -100,6 +100,15 @@ async function bulkSaveItems(collection: string, array: any[], options?: any) {
         array.forEach(item => {
             if (!lockedIds.includes(item._id)) {
                 saveItems.push(item);
+            } else {
+                let findLockedItem = lockedItems.find(i => i._id === item._id);
+                if (findLockedItem) {
+                    const allowableOverrideKeys = ['bookingStartDate'];
+                    allowableOverrideKeys.forEach(overrideKey => {
+                        findLockedItem[overrideKey] = item[overrideKey];
+                    });
+                    saveItems.push(findLockedItem);
+                }
             }
         });
     }
@@ -387,6 +396,38 @@ export async function aggregateBookingsServiceTermYearLocation(
 
     return allItems as any[];
 }
+export async function aggregateExpenses(
+    startDate: string,
+    endDate: string,
+    groups:string[],
+): Promise<any[]> {
+    let allItems = [];
+    const filter = items
+        .filter()
+        .ge('createdDate', startDate)
+        .le('createdDate', endDate);
+
+
+    function formAgg(collection: string) {
+        return items
+            .aggregate(collection)
+            .filter(filter)
+            .ascending('amountExpensedSum')
+            .group(...groups)
+            .limit(1000)
+    }
+
+    let resultsAmount = await formAgg('expensesAnalytics').sum('amountExpensed').run();
+
+    allItems.push(...resultsAmount.items)
+
+    while (resultsAmount.hasNext()) {
+        resultsAmount = await resultsAmount.next();
+        allItems.push(...resultsAmount.items)
+    }
+
+    return allItems as any[];
+}
 
 export async function aggregateBookingsServiceLocation(
     startDate: string,
@@ -582,4 +623,80 @@ export async function getCreatedDateRange(collection: string): Promise<string> {
         console.error(`Failed to get date range for ${collection}`, error);
         return 'err';
     }
+}
+
+export async function getCollectionFields(dataCollectionId: string) {
+    const result = await collections.getDataCollection(dataCollectionId);
+    let fields = result.fields?.map(i => ({ label: i.displayName, value: i.key }));
+    return fields.sort(function (a, b) {
+        const sortKey = "label";
+        if (a[sortKey] < b[sortKey]) { return -1; }
+        if (a[sortKey] > b[sortKey]) { return 1; }
+        return 0;
+    })
+}
+
+export function addDaysYYYYMMDD(dateString: string, days: number): string {
+    const date = new Date(`${dateString}T00:00:00`);
+
+    if (isNaN(date.getTime())) {
+        throw new Error(`Invalid date: ${dateString}`);
+    }
+
+    date.setDate(date.getDate() + days);
+
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+
+    // Return YYYY-MM-DD
+    return `${year}-${month}-${day}`;
+}
+
+export async function duplicateCMSItems(collection: string, queryOptions: any[], modifyOptions: any[], addDays: number) {
+    let query = items.query(collection);
+    queryOptions.filter(i=>i.value).forEach(option => {
+        query = query.eq(option.key, option.value);
+    });
+    const results = await query.limit(1000).find();
+    let dataItems = results.items;
+
+    
+    if(dataItems.length > 0){
+        dataItems.forEach(i => {
+            delete i._id;
+            if (i.createdDate) {
+                i.createdDate = addDaysYYYYMMDD(i.createdDate, addDays);
+            }
+            modifyOptions.filter(i=>i.value).forEach(option => {
+                i[option.key] = option.value
+            });
+        });
+
+        const bulkResults = await items.bulkInsert(collection, dataItems);
+    
+        // console.log(dataItems);
+        // console.log(bulkResults);
+        return { dataItems, bulkResults }
+    }
+
+    return {dataItems}
+
+}
+
+export async function countCMSItemsToDuplicate(collection: string, queryOptions: any[]) {
+    // console.log({collection,queryOptions});
+    
+    let query = items.query(collection);
+    queryOptions.filter(i=>i.value).forEach(option => {
+        query = query.eq(option.key, option.value);
+    });
+    const results = await query.limit(1000).find({returnTotalCount:true});
+
+    // console.log(results);
+    
+
+    return results.totalCount;
+
+
 }

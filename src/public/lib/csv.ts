@@ -12,6 +12,7 @@ const analyticsCollections = [
     'storesAnalytics',
     'invoicesAnalytics',
     'pricingPlanAnalytics',
+    'b2bAnalytics',
     'expensesAnalytics',
 ];
 

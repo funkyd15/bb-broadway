@@ -22,6 +22,7 @@ import {
   MultiSelectCheckbox,
   FormField,
   Modal,
+  NumberInput,
 
 } from '@wix/design-system';
 
@@ -56,11 +57,17 @@ import {
   bulkRemoveAnalytics,
   bulkLockOrUnlockAnalytics,
   sumAmountExpensed,
-  aggregateCollectionWithMembershipValueAndExpenses
+  aggregateCollectionWithMembershipValueAndExpenses,
+  getCollectionFields,
+  duplicateCMSItems,
+  countCMSItemsToDuplicate,
+  aggregateExpenses
 } from "../../../../public/lib/data-utilities";
 import DatePickerWithShortcuts from "../../../../public/lib/datePicker";
 import { queryPricingPlans } from "../../../../public/lib/pricingPlans";
 import { exportToCSV } from "../../../../public/lib/csv";
+import KeyValueInput from "../../../../public/lib/keyValueInput";
+
 
 const w1 = "240px";
 
@@ -74,6 +81,7 @@ const DashboardPage: FC = () => {
     'invoicesAnalytics',
     'pricingPlanAnalytics',
     'expensesAnalytics',
+    'b2bAnalytics',
   ];
 
   const tooltips = {
@@ -194,6 +202,9 @@ const DashboardPage: FC = () => {
   const [sumPricingPlans, setSumPricingPlans] = useState<Number>(0);
   const [sumExpenses, setSumExpenses] = useState<Number>(0);
   const [sumRevenue, setSumRevenue] = useState<Number>(0);
+  const [sumB2B, setSumB2B] = useState<Number>(0);
+  const [duplicateAddDays, setDuplicateAddDays] = useState<Number>(365);
+  const [duplicateCountItems, setDuplicateCountItems] = useState<Number>(0);
 
   const [summaryRows, setSummaryRows] = useState<any[]>([]);
   const [teacherRows, setTeacherRows] = useState<any[]>([]);
@@ -211,6 +222,16 @@ const DashboardPage: FC = () => {
   const [serviceTermYearLocationRows, setServiceTermYearLocationRows] = useState<any[]>([]);
   const [serviceTermYearLocationFilteredRows, setServiceTermYearLocationFilteredRows] = useState<any[]>([]);
   const [storesRows, setStoresRows] = useState<any[]>([]);
+  const [B2BRows, setB2BRows] = useState<any[]>([]);
+  const [expensesRows, setExpensesRows] = useState<any[]>([]);
+  const [expensesTypeRows, setExpensesTypeRows] = useState<any[]>([]);
+  const [expensesTypeSubTypeRows, setExpensesTypeSubTypeRows] = useState<any[]>([]);
+  const [expensesSubTypeRows, setExpensesSubTypeRows] = useState<any[]>([]);
+
+  const [expensesFields, setExpensesFields] = useState<any[]>([]);
+  const [duplicateExpensesQueryOptions, setDuplicateExpensesQueryOptions] = useState<any[]>([]);
+  const [duplicateExpensesModifyOptions, setDuplicateExpensesModifyOptions] = useState<any[]>([]);
+
   const [filters, setFilters] = useState<{}>({});
   const [sorting, setSorting] = useState<{
     key: string;
@@ -280,6 +301,12 @@ const DashboardPage: FC = () => {
       serviceTermYearLocationRows,//23
 
       sumExpenses,//24
+      sumB2B,//25
+      B2BRows,//26
+      expensesRows,//27
+      expensesTypeRows,//28
+      expensesTypeSubTypeRows,//29
+      expensesSubTypeRows,//30
 
 
     ] = await Promise.all([
@@ -316,7 +343,13 @@ const DashboardPage: FC = () => {
       aggregateBookingsServiceTermYearLocation(start, end), // 23
 
       sumAmountExpensed('expensesAnalytics', start, end), // 24
+      sumAmountReceived('b2bAnalytics', start, end), // 25
 
+      aggregateCollectionWithMembershipValueAndExpenses('b2bAnalytics', start, end, 'B2BTitle'), // 26
+      aggregateExpenses(start, end, ['title']), // 27
+      aggregateExpenses(start, end, ['type']),//28
+      aggregateExpenses(start, end, ['type', 'subType']),//29
+      aggregateExpenses(start, end, ['subType']),//30
 
     ]);
 
@@ -353,24 +386,77 @@ const DashboardPage: FC = () => {
 
 
     setSumExpenses(sumExpenses)//24
+    setSumB2B(sumB2B)//25
+    setB2BRows(B2BRows)//26
 
-    const summary = [
+
+
+    let summary = [
       { title: "Bookings", value: sumBookings },
       { title: "Events", value: sumEvents },
+      { title: "B2B", value: sumB2B },
       { title: "Invoices", value: sumInvoices },
       { title: "Pricing Plans", value: sumPricingPlans },
       { title: "Stores", value: sumStores },
-      { title: "Expenses", value: sumExpenses },
+      { title: "All Expenses", amountExpensedSum: sumExpenses },
     ];
+
+
+    summary.forEach(summaryItem => {
+      const findExpenseByType = expensesTypeRows.find(i => i.type === summaryItem.title);
+      if (findExpenseByType?.amountExpensedSum) {
+        summaryItem.amountExpensedSum = findExpenseByType?.amountExpensedSum || 0;
+        summaryItem.sum = summaryItem.value + summaryItem.amountExpensedSum;
+      }
+    });
 
     setSummaryRows(summary);
 
     setSumRevenue(sumRows(taxYearRows, 'amountReceivedSum'))
 
+    // expensesRows.sort(function (a, b) {
+    //   const sortKey = "amountExpensedSum";
+    //   if (a[sortKey] < b[sortKey]) { return -1; }
+    //   if (a[sortKey] > b[sortKey]) { return 1; }
+    //   return 0;
+    // })
+
+    setExpensesRows(expensesRows)//27
+    setExpensesTypeRows(expensesTypeRows)//28
+    setExpensesTypeSubTypeRows(expensesTypeSubTypeRows)//29
+    setExpensesSubTypeRows(expensesSubTypeRows)//30
+
     // console.log("locationRows", locationRows);
 
 
   }
+
+  useEffect(() => {
+    getCollectionFields('expensesAnalytics').then((fields: any) => {
+      setExpensesFields(fields);
+    });
+
+    countCMSItemsToDuplicateFunction([]);
+  }, []);
+
+  async function duplicateExpensesItems() {
+    setRunning(true);
+    setStatus("Duplicating Expenses...");
+    const queryOptions = duplicateExpensesQueryOptions.filter(i => i.value);
+    const modifyOptions = duplicateExpensesModifyOptions.filter(i => i.value);
+    const results = await duplicateCMSItems('expensesAnalytics', queryOptions, modifyOptions, Number(duplicateAddDays));
+
+    setStatus("Duplicated Expenses");
+    setSubStatus(`${results?.dataItems?.length} Items Created`);
+
+    setTimeout(() => {
+      setRunning(false);
+
+    }, 2000);
+
+
+  }
+
 
 
   function sumRows(rows: any[], key: string) {
@@ -537,8 +623,20 @@ const DashboardPage: FC = () => {
     },
     {
       id: 'value',
-      title: `Amount (${formatGBP(sumRows(summaryRows, 'value'))})`,
-      render: (item) => formatGBP(item.value),
+      title: `Received`,
+      render: (item) => Math.abs(item.value) > 0 ? formatGBP(item.value) : undefined,
+    },
+    {
+      id: 'amountExpensedSum',
+      title: `Expensed`,
+      render: (item) => Math.abs(item.amountExpensedSum) > 0 ? formatGBP(item.amountExpensedSum) : undefined,
+      // width: '250px',
+    },
+    {
+      id: 'sum',
+      title: `Sum`,
+      render: (item) => Math.abs(item.sum) > 0 ? formatGBP(item.sum) : undefined,
+      infoTooltipProps: tooltips.sum,
     },
 
   ];
@@ -793,6 +891,97 @@ const DashboardPage: FC = () => {
     },
   ];
 
+  const expensesColumns: TableColumn<any>[] = [
+    {
+      id: 'title',
+      title: `Title (${expensesRows.length})`,
+      render: (item) => item.title,
+      width: '250px',
+    },
+    {
+      id: 'amountExpensedSum',
+      title: `Expensed (${formatGBP(sumExpenses)})`,
+      render: (item) => formatGBP(item.amountExpensedSum),
+      width: '250px',
+    },
+  ];
+
+  const expensesTypeColumns: TableColumn<any>[] = [
+    {
+      id: 'Type',
+      title: `Type (${expensesTypeRows.length})`,
+      render: (item) => item.type,
+      width: '250px',
+    },
+    {
+      id: 'amountExpensedSum',
+      title: `Expensed (${formatGBP(sumExpenses)})`,
+      render: (item) => formatGBP(item.amountExpensedSum),
+      width: '250px',
+    },
+  ];
+  const expensesSubTypeColumns: TableColumn<any>[] = [
+    {
+      id: 'subType',
+      title: `Sub Type (${expensesSubTypeRows.length})`,
+      render: (item) => item.subType,
+      width: '250px',
+    },
+    {
+      id: 'amountExpensedSum',
+      title: `Expensed (${formatGBP(sumExpenses)})`,
+      render: (item) => formatGBP(item.amountExpensedSum),
+      width: '250px',
+    },
+  ];
+
+  const expensesTypeSubTypeColumns: TableColumn<any>[] = [
+    {
+      id: 'type',
+      title: `Type (${expensesTypeSubTypeRows.length})`,
+      render: (item) => item.type,
+      width: '250px',
+    },
+    {
+      id: 'subType',
+      title: `Sub Type`,
+      render: (item) => item.subType,
+      width: '250px',
+    },
+    {
+      id: 'amountExpensedSum',
+      title: `Expensed (${formatGBP(sumExpenses)})`,
+      render: (item) => formatGBP(item.amountExpensedSum),
+      width: '250px',
+    },
+  ];
+
+  const B2BColumns: TableColumn<any>[] = [
+    {
+      id: 'title',
+      title: `Title (${B2BRows.length})`,
+      render: (item) => item.B2BTitle,
+      width: '250px',
+    },
+    {
+      id: 'amountReceivedSum',
+      title: `Received (${formatGBP(sumB2B)})`,
+      render: (item) => formatGBP(item.amountReceivedSum),
+      width: '250px',
+    },
+    {
+      id: 'amountExpensedSum',
+      title: `Expensed (${formatGBP(sumRows(B2BRows, 'amountExpensedSum'))})`,
+      render: (item) => formatGBP(item.amountExpensedSum),
+    },
+    {
+      id: 'sum',
+      title: `Sum (${formatGBP(sumRows(B2BRows, 'sum'))})`,
+      render: (item) => formatGBP(item.sum),
+      infoTooltipProps: tooltips.sum,
+    },
+  ];
+
   const pricingPlanColumns: TableColumn<any>[] = [
     {
       id: 'planName',
@@ -978,19 +1167,19 @@ const DashboardPage: FC = () => {
 
         <TableToolbar.Item>
           {makeMultiCheckbox("serviceType", "Service Type")}
-       
+
         </TableToolbar.Item>
         <TableToolbar.Item>
           {makeMultiCheckbox("year", "Year")}
-         
+
         </TableToolbar.Item>
         <TableToolbar.Item>
           {makeMultiCheckbox("term", "Term")}
-         
+
         </TableToolbar.Item>
         <TableToolbar.Item>
           {makeMultiCheckbox("parseLocation", "Locations")}
-         
+
 
         </TableToolbar.Item>
 
@@ -1065,8 +1254,18 @@ const DashboardPage: FC = () => {
   const pricingPlanTables = [
     { title: `Pricing Plans`, rows: pricingPlanRows, columns: pricingPlanColumns, accordion: true },
   ]
+
   const invoiceTables = [
     { title: `Invoices`, rows: invoiceRows, columns: invoiceColumns, accordion: true },
+  ]
+  const B2BTables = [
+    { title: `B2B`, rows: B2BRows, columns: B2BColumns, accordion: true },
+  ]
+  const expensesTables = [
+    { title: `Expenses: Type, Sub Type`, rows: expensesTypeSubTypeRows, columns: expensesTypeSubTypeColumns, accordion: true },
+    { title: `Expenses: Type`, rows: expensesTypeRows, columns: expensesTypeColumns, accordion: true },
+    { title: `Expenses: Sub Type`, rows: expensesSubTypeRows, columns: expensesSubTypeColumns, accordion: true },
+    { title: `Expenses: Title`, rows: expensesRows, columns: expensesColumns, accordion: true },
   ]
 
 
@@ -1136,7 +1335,7 @@ const DashboardPage: FC = () => {
             <>
               <Button size="small" priority="secondary" onClick={closeModal} >
                 Close
-                < Dismiss/>
+                < Dismiss />
               </Button>
             </>
           }
@@ -1146,7 +1345,7 @@ const DashboardPage: FC = () => {
           <Divider />
         </Box>
 
-        <Box padding="SP4" direction="vertical" gap="SP4">
+        <Box padding="SP4" direction="vertical" gap="SP3">
 
 
           <DatePickerWithShortcuts
@@ -1178,6 +1377,89 @@ const DashboardPage: FC = () => {
     </Cell>
 
 
+  const debounceRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  async function countCMSItemsToDuplicateFunction(value: any[]) {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+
+    debounceRef.current = setTimeout(async () => {
+      const totalCount = await countCMSItemsToDuplicate(
+        'expensesAnalytics',
+        value // use the latest value, not state
+      );
+
+      setDuplicateCountItems(Number(totalCount));
+    }, 1000);
+  }
+
+  const duplicateExpensesUI = <Box padding="SP1" direction="vertical" gap="SP3">
+    <FormField
+      label="Filter Values"
+    >
+      <KeyValueInput
+        items={expensesFields}
+        onChange={(value) => {
+          setDuplicateExpensesQueryOptions(value);
+          countCMSItemsToDuplicateFunction(value);
+
+        }}
+      >
+      </KeyValueInput>
+    </FormField>
+    <Divider />
+    <FormField
+      label="Modify Values"
+    >
+
+      <KeyValueInput
+        items={expensesFields}
+        onChange={(value) => {
+          setDuplicateExpensesModifyOptions(value);
+
+        }}
+      >
+      </KeyValueInput>
+    </FormField>
+
+    <Divider />
+
+
+
+    <Box
+      width="300px"
+      padding="SP1" direction="vertical" gap="SP3"
+    >
+
+      <Box
+        padding="SP1" direction="vertical" gap="SP1">
+        <Text secondary>Add Days to Created Date</Text>
+        <FormField>
+          <NumberInput
+            value={duplicateAddDays.toString()}
+            onChange={(value: string) => {
+              setDuplicateAddDays(Number(value))
+            }}
+          >
+          </NumberInput>
+        </FormField>
+      </Box>
+
+      <Button
+        onClick={duplicateExpensesItems}
+        disabled={running}
+        prefixIcon={<DataCollection />}
+
+      >
+        Duplicate Items ({duplicateCountItems.toString()})
+
+      </Button>
+
+    </Box>
+
+
+  </Box>
 
 
   return (
@@ -1190,18 +1472,18 @@ const DashboardPage: FC = () => {
             <>
 
               <Box direction="horizontal" gap="SP1">
-              <Button onClick={runExportToCSV} disabled={running} priority="secondary">
-                Export CSV
-                <UploadExport/>
-              </Button>
+                <Button onClick={runExportToCSV} disabled={running} priority="secondary">
+                  Export CSV
+                  <UploadExport />
+                </Button>
 
-              <Button onClick={() => window.open(CMSlink, "_blank")} priority="secondary">
-                Open CMS
-                <DataCollection/>
-              </Button>
+                <Button onClick={() => window.open(CMSlink, "_blank")} priority="secondary">
+                  Open CMS
+                  <DataCollection />
+                </Button>
                 <Button priority="secondary" onClick={runSums} disabled={running}>
                   Refresh
-                  <Refresh/>
+                  <Refresh />
                 </Button>
 
                 <Button onClick={openModal} disabled={running} prefixIcon={<DateSmall />}>
@@ -1222,16 +1504,50 @@ const DashboardPage: FC = () => {
 
         <Page.Content>
 
-          <Layout gap="SP4">
+          <Layout gap="SP2">
 
             <Cell span={12}>
+
               <Card>
+                <Card.Header
+                  title={status}
+                  subtitle={subStatus}
+                  suffix={
+                    <Box padding="SP1" direction="vertical" gap="SP1">
+
+                      <Box
+                        direction="horizontal"
+                        gap="SP3"
+
+                        align="right"
+                      >
+                        {/* <Button onClick={runExportToCSV} disabled={running}>
+                          Export CSV
+                        </Button>
+
+                        <Button onClick={() => window.open(CMSlink, "_blank")}>
+                          Open CMS
+                        </Button> */}
+                      </Box>
+                    </Box>
+                  }
+                />
+              </Card>
+
+
+            </Cell>
+            <Cell span={12}>
+
+
+              <Card>
+               
                 <Accordion
                   items={[
                     accordionItemBuilder({
-                      title: 'Data Processing (Date of Purchase)',
+                      title: 'Process WIX App Data',
                       children: (
-                        <Box padding="SP4" direction="vertical" gap="SP4">
+                        <Box padding="SP1" direction="vertical" gap="SP3">
+                          <Heading size="medium">By Date of Purchase: {dateRange}</Heading>
                           <Box padding="SP3">
                             <MultiCheckbox
                               items={[
@@ -1288,56 +1604,38 @@ const DashboardPage: FC = () => {
                   ]}
                 />
               </Card>
-            </Cell>
-
-
-
-            <Cell span={12}>
 
               <Card>
-                <Card.Header
-                  title={status}
-                  subtitle={subStatus}
-                  suffix={
-                    <Box padding="SP4" direction="vertical" gap="SP4">
 
-                      <Box
-                        direction="horizontal"
-                        gap="SP3"
-
-                        align="right"
-                      >
-                        {/* <Button onClick={runExportToCSV} disabled={running}>
-                          Export CSV
-                        </Button>
-
-                        <Button onClick={() => window.open(CMSlink, "_blank")}>
-                          Open CMS
-                        </Button> */}
-                      </Box>
-                    </Box>
-                  }
+                <Accordion
+                  items={[
+                    accordionItemBuilder({
+                      title: 'Duplicate Expenses',
+                      children: (
+                        duplicateExpensesUI
+                      ),
+                    }),
+                  ]}
                 />
+
+
               </Card>
 
-
             </Cell>
-
-
 
 
             <Cell span={12}>
               <Card              >
                 <Card.Header
-                  title={`${formatGBP(sumRevenue + sumExpenses)}`}
-                  subtitle={`+${formatGBP(sumRevenue)}, ${formatGBP(sumExpenses)}`}
+                  title={`${dateRange}`}
+                  subtitle={`${formatGBP(sumRevenue + sumExpenses)} (+${formatGBP(sumRevenue)}, ${formatGBP(sumExpenses)})`}
                 />
-                <Box padding="SP4" direction="vertical" gap="SP4">
+                <Box padding="SP1" direction="vertical" gap="SP1">
 
                   <Accordion
                     items={[
                       accordionItemBuilder({
-                        title: "Summary",
+                        title: "Summary by Area",
                         children: (
                           <Table
                             data={summaryRows}
@@ -1355,7 +1653,7 @@ const DashboardPage: FC = () => {
 
             <Cell span={12}>
               <Card>
-                <Box padding="SP4" direction="vertical" gap="SP4">
+                <Box padding="SP1" direction="vertical" gap="SP1">
                   <>
                     {taxTables.map(mapTables)}
                   </>
@@ -1365,7 +1663,7 @@ const DashboardPage: FC = () => {
 
             <Cell span={12}>
               <Card>
-                <Box padding="SP4" direction="vertical" gap="SP4">
+                <Box padding="SP1" direction="vertical" gap="SP1">
                   <>
                     {bookingsTables.map(mapTables)}
                   </>
@@ -1376,7 +1674,7 @@ const DashboardPage: FC = () => {
 
             <Cell span={12}>
               <Card>
-                <Box padding="SP4" direction="vertical" gap="SP4">
+                <Box padding="SP1" direction="vertical" gap="SP1">
                   <>
                     {eventTables.map(mapTables)}
                   </>
@@ -1386,7 +1684,17 @@ const DashboardPage: FC = () => {
 
             <Cell span={12}>
               <Card>
-                <Box padding="SP4" direction="vertical" gap="SP4">
+                <Box padding="SP1" direction="vertical" gap="SP1">
+                  <>
+                    {B2BTables.map(mapTables)}
+                  </>
+                </Box>
+              </Card>
+            </Cell>
+
+            <Cell span={12}>
+              <Card>
+                <Box padding="SP1" direction="vertical" gap="SP1">
                   <>
                     {invoiceTables.map(mapTables)}
                   </>
@@ -1396,7 +1704,7 @@ const DashboardPage: FC = () => {
 
             <Cell span={12}>
               <Card>
-                <Box padding="SP4" direction="vertical" gap="SP4">
+                <Box padding="SP1" direction="vertical" gap="SP1">
                   <>
                     {storesTables.map(mapTables)}
                   </>
@@ -1406,9 +1714,18 @@ const DashboardPage: FC = () => {
 
             <Cell span={12}>
               <Card>
-                <Box padding="SP4" direction="vertical" gap="SP4">
+                <Box padding="SP1" direction="vertical" gap="SP1">
                   <>
                     {pricingPlanTables.map(mapTables)}
+                  </>
+                </Box>
+              </Card>
+            </Cell>
+            <Cell span={12}>
+              <Card>
+                <Box padding="SP1" direction="vertical" gap="SP1">
+                  <>
+                    {expensesTables.map(mapTables)}
                   </>
                 </Box>
               </Card>

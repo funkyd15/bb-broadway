@@ -69,6 +69,7 @@ export default function DatePickerWithShortcuts({
         d.setDate(d.getDate() + days);
         return d;
     };
+    
     const addMonths = (date: Date, months: number): Date => {
         const d = new Date(date);
         d.setMonth(d.getMonth() + months);

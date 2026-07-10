@@ -135,6 +135,7 @@ export async function queryExtendedBookings(startDate: Date, endDate: Date, stat
             const location = i.booking?.bookedEntity?.slot?.location.name || i.booking?.bookedEntity?.schedule?.location?.name;
             const parseLocation = extractVenue(location);
 
+            const bookingStartDate = i.booking?.bookedEntity?.slot?.startDate || i.booking?.bookedEntity?.schedule?.firstSessionStart;
 
             const parsedItem = {
                 _id: i.booking?._id,
@@ -146,6 +147,7 @@ export async function queryExtendedBookings(startDate: Date, endDate: Date, stat
                 additionalFees: findOrder?.additionalFees,
                 additionalFeesAmount,
                 link: `https://manage.wix.com/dashboard/0210b701-c715-482e-bdcf-2e8185181308/ecom-platform/order-details/${i.order?._id}`,
+                bookingStartDate:bookingStartDate?new Date(bookingStartDate):undefined,
                 paymentStatus,
                 teacher: i.booking?.bookedEntity?.slot?.resource?.name || "--BLANK--",
                 location: location || "--BLANK--",
