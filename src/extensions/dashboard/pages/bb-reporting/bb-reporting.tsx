@@ -35,6 +35,7 @@ import {
   DataCollection,
   Refresh,
   DateSmall,
+  Saved
 } from "@wix/wix-ui-icons-common/odeditor";
 
 import type { TableColumn } from '@wix/patterns';
@@ -61,7 +62,8 @@ import {
   getCollectionFields,
   duplicateCMSItems,
   countCMSItemsToDuplicate,
-  aggregateExpenses
+  aggregateExpenses,
+  aggregateEvents
 } from "../../../../public/lib/data-utilities";
 import DatePickerWithShortcuts from "../../../../public/lib/datePicker";
 import { queryPricingPlans } from "../../../../public/lib/pricingPlans";
@@ -72,6 +74,7 @@ import KeyValueInput from "../../../../public/lib/keyValueInput";
 const w1 = "240px";
 
 const CMSlink = "https://manage.wix.com/dashboard/0210b701-c715-482e-bdcf-2e8185181308/wix-cms/folders/53822ca6-21cc-415e-acfe-ec828e1e60fe?apps-override=aad90d5f-bb9e-4dc3-b308-a33ff43ec1da";
+const backupsLink = "https://manage.wix.com/dashboard/0210b701-c715-482e-bdcf-2e8185181308/wix-cms/data-backups";
 
 const DashboardPage: FC = () => {
   const analyticsCollections = [
@@ -203,8 +206,6 @@ const DashboardPage: FC = () => {
   const [sumExpenses, setSumExpenses] = useState<Number>(0);
   const [sumRevenue, setSumRevenue] = useState<Number>(0);
   const [sumB2B, setSumB2B] = useState<Number>(0);
-  const [duplicateAddDays, setDuplicateAddDays] = useState<Number>(365);
-  const [duplicateCountItems, setDuplicateCountItems] = useState<Number>(0);
 
   const [summaryRows, setSummaryRows] = useState<any[]>([]);
   const [teacherRows, setTeacherRows] = useState<any[]>([]);
@@ -231,6 +232,14 @@ const DashboardPage: FC = () => {
   const [expensesFields, setExpensesFields] = useState<any[]>([]);
   const [duplicateExpensesQueryOptions, setDuplicateExpensesQueryOptions] = useState<any[]>([]);
   const [duplicateExpensesModifyOptions, setDuplicateExpensesModifyOptions] = useState<any[]>([]);
+  const [duplicateExpensesOptions, setDuplicateExpensesOptions] = useState<any>({ timeUnit: 'DAYS', value: 30, itterations: 1 });
+  const [duplicateCollection, setDuplicateCollection] = useState<string>('expensesAnalytics');
+  const [duplicateCountItems, setDuplicateCountItems] = useState<Number>(0);
+
+    const [eventByTitleRows, setEventByTitleRows] = useState<any[]>([]);
+    const [eventByTitleFilteredRows, setEventByTitleFilteredRows] = useState<any[]>([]);
+
+
 
   const [filters, setFilters] = useState<{}>({});
   const [sorting, setSorting] = useState<{
@@ -308,6 +317,8 @@ const DashboardPage: FC = () => {
       expensesTypeSubTypeRows,//29
       expensesSubTypeRows,//30
 
+      eventByTitleRows, //31
+
 
     ] = await Promise.all([
       sumAmountReceived('bookingsAnalytics', start, end), // 0
@@ -350,6 +361,8 @@ const DashboardPage: FC = () => {
       aggregateExpenses(start, end, ['type']),//28
       aggregateExpenses(start, end, ['type', 'subType']),//29
       aggregateExpenses(start, end, ['subType']),//30
+
+      aggregateEvents(start, end) //31
 
     ]);
 
@@ -426,28 +439,45 @@ const DashboardPage: FC = () => {
     setExpensesTypeSubTypeRows(expensesTypeSubTypeRows)//29
     setExpensesSubTypeRows(expensesSubTypeRows)//30
 
+    setEventByTitleRows(eventByTitleRows) //31
+    setEventByTitleFilteredRows(eventByTitleRows) //31
+
     // console.log("locationRows", locationRows);
 
 
   }
 
   useEffect(() => {
-    getCollectionFields('expensesAnalytics').then((fields: any) => {
+    getCollectionFields(duplicateCollection).then((fields: any) => {
       setExpensesFields(fields);
     });
 
     countCMSItemsToDuplicateFunction([]);
   }, []);
 
+  useEffect(() => {
+    countCMSItemsToDuplicateFunction(duplicateExpensesQueryOptions);
+  }, [duplicateCollection, duplicateExpensesQueryOptions]);
+
+  useEffect(() => {
+
+    getCollectionFields(duplicateCollection).then((fields: any) => {
+      setExpensesFields(fields);
+    });
+
+  }, [duplicateCollection]);
+
   async function duplicateExpensesItems() {
     setRunning(true);
     setStatus("Duplicating Expenses...");
     const queryOptions = duplicateExpensesQueryOptions.filter(i => i.value);
     const modifyOptions = duplicateExpensesModifyOptions.filter(i => i.value);
-    const results = await duplicateCMSItems('expensesAnalytics', queryOptions, modifyOptions, Number(duplicateAddDays));
+    const results = await duplicateCMSItems(duplicateCollection, queryOptions, modifyOptions, duplicateExpensesOptions);
 
     setStatus("Duplicated Expenses");
-    setSubStatus(`${results?.dataItems?.length} Items Created`);
+    setSubStatus(`${results?.duplicatedItems?.length} Items Created`);
+
+    await runSums();
 
     setTimeout(() => {
       setRunning(false);
@@ -1095,6 +1125,61 @@ const DashboardPage: FC = () => {
     },
   ];
 
+  const eventByTitleColumns: TableColumn<any>[] = [
+    {
+      id: 'title',
+      title: `Title (${eventByTitleFilteredRows.length})`,
+      render: (item) => item.eventTitle,
+      width: '250px',
+    },
+    {
+      id: 'serviceType',
+      title: `Service`,
+      render: (item) => item.serviceType,
+      width: '100px',
+    },
+    {
+      id: 'year',
+      title: `Year`,
+      render: (item) => item.year,
+      width: '75px',
+    },
+    {
+      id: 'term',
+      title: `Term`,
+      render: (item) => item.term,
+      width: '75px',
+    },
+    {
+      id: 'parseLocation',
+      title: `Location`,
+      render: (item) => item.parseLocation,
+      width: '100px',
+    },
+    {
+      id: 'mainCategory',
+      title: `Category`,
+      render: (item) => item.mainCategory,
+      width: '75px',
+    },
+    {
+      id: 'amountReceivedSum',
+      title: `R (${formatGBP(sumRows(eventByTitleFilteredRows, 'amountReceivedSum'))})`,
+      render: (item) => formatGBP(item.amountReceivedSum),
+
+    },
+    {
+      id: 'amountExpensedSum',
+      title: `E (${formatGBP(sumRows(eventByTitleFilteredRows, 'amountExpensedSum'))})`,
+      render: (item) => formatGBP(item.amountExpensedSum),
+    },
+    {
+      id: 'sum',
+      title: `S (${formatGBP(sumRows(eventByTitleFilteredRows, 'sum'))})`,
+      render: (item) => formatGBP(item.sum),
+    },
+  ];
+
 
   function getDropdownOptionsFromRows(rows: any[], key: string, allValue?: string) {
     const values = [...new Set(rows.map(i => i[key]))].sort();
@@ -1117,6 +1202,11 @@ const DashboardPage: FC = () => {
   useEffect(() => {
     filterAndSortServiceTermYearLocationRow();
   }, [filters, sorting]);
+
+  useEffect(() => {
+    console.log(duplicateExpensesOptions);
+
+  }, [duplicateExpensesOptions]);
 
   function filterAndSortServiceTermYearLocationRow() {
     let filteredRows = structuredClone(serviceTermYearLocationRows);
@@ -1245,6 +1335,7 @@ const DashboardPage: FC = () => {
 
   const eventTables = [
     { title: `Events`, rows: eventRows, columns: eventColumns, accordion: true },
+    { title: `Events By Title [WIP]`, rows: eventByTitleFilteredRows, columns: eventByTitleColumns, accordion: true },
   ]
 
   const storesTables = [
@@ -1386,7 +1477,7 @@ const DashboardPage: FC = () => {
 
     debounceRef.current = setTimeout(async () => {
       const totalCount = await countCMSItemsToDuplicate(
-        'expensesAnalytics',
+        duplicateCollection,
         value // use the latest value, not state
       );
 
@@ -1395,6 +1486,47 @@ const DashboardPage: FC = () => {
   }
 
   const duplicateExpensesUI = <Box padding="SP1" direction="vertical" gap="SP3">
+
+    <Box
+      direction="vertical" gap="SP1">
+      <Text secondary>Collection</Text>
+      <Box direction="horizontal" gap="SP3" width="400px">
+        <FormField>
+          <Dropdown
+            options={[
+              { id: "expensesAnalytics", value: "Expenses" },
+              { id: "b2bAnalytics", value: "B2B" },
+            ]}
+            selectedId={duplicateCollection}
+            popoverProps={{ appendTo: 'window' }}
+            onSelect={(value: any) => {
+              setDuplicateCollection(value.id)
+            }}
+            valueParser={({ value }) => value}
+          >
+          </Dropdown>
+        </FormField>
+
+
+        <Box
+          width={w1}
+        >
+
+          <Button
+            priority="secondary"
+            onClick={() => { countCMSItemsToDuplicateFunction(duplicateExpensesQueryOptions) }}
+            disabled={running}>
+            Found {duplicateCountItems.toString()} Items
+            <Refresh />
+          </Button>
+        </Box>
+      </Box>
+
+
+    </Box>
+
+    <Divider />
+
     <FormField
       label="Filter Values"
     >
@@ -1402,12 +1534,14 @@ const DashboardPage: FC = () => {
         items={expensesFields}
         onChange={(value) => {
           setDuplicateExpensesQueryOptions(value);
-          countCMSItemsToDuplicateFunction(value);
-
+          // countCMSItemsToDuplicateFunction(value);
         }}
       >
       </KeyValueInput>
     </FormField>
+
+
+
     <Divider />
     <FormField
       label="Modify Values"
@@ -1428,33 +1562,90 @@ const DashboardPage: FC = () => {
 
 
     <Box
-      width="300px"
       padding="SP1" direction="vertical" gap="SP3"
     >
 
       <Box
-        padding="SP1" direction="vertical" gap="SP1">
-        <Text secondary>Add Days to Created Date</Text>
-        <FormField>
-          <NumberInput
-            value={duplicateAddDays.toString()}
-            onChange={(value: string) => {
-              setDuplicateAddDays(Number(value))
-            }}
-          >
-          </NumberInput>
-        </FormField>
+        padding="SP1" direction="horizontal" gap="SP3"
+      >
+
+
+
+        <Box
+          padding="SP1" direction="vertical" gap="SP1">
+          <Text secondary>Time Unit</Text>
+          <FormField>
+            <Dropdown
+              options={[
+                { id: "DAYS", value: "DAYS" },
+                { id: "MONTHS", value: "MONTHS" },
+                { id: "YEARS", value: "YEARS" },
+              ]}
+              selectedId={duplicateExpensesOptions.timeUnit}
+              popoverProps={{ appendTo: 'window' }}
+              onSelect={(value: any) => {
+                setDuplicateExpensesOptions({ ...duplicateExpensesOptions, timeUnit: value.id })
+              }}
+              valueParser={({ value }) => value}
+            >
+            </Dropdown>
+          </FormField>
+        </Box>
+
+
+
+        <Box
+          padding="SP1" direction="vertical" gap="SP1">
+          <Text secondary>Add {duplicateExpensesOptions.timeUnit?.toLowerCase()}</Text>
+          <FormField>
+            <NumberInput
+              value={duplicateExpensesOptions.value.toString()}
+              onChange={(value: string) => {
+                setDuplicateExpensesOptions({ ...duplicateExpensesOptions, value: Number(value) })
+              }}
+            >
+            </NumberInput>
+          </FormField>
+        </Box>
+
+        <Box
+          padding="SP1" direction="vertical" gap="SP1">
+          <Text secondary>Itterations</Text>
+          <FormField>
+            <NumberInput
+              value={duplicateExpensesOptions.itterations.toString()}
+              onChange={(value: string) => {
+                setDuplicateExpensesOptions({ ...duplicateExpensesOptions, itterations: Number(value) })
+              }}
+            >
+            </NumberInput>
+          </FormField>
+        </Box>
+
+
+
+
       </Box>
 
-      <Button
-        onClick={duplicateExpensesItems}
-        disabled={running}
-        prefixIcon={<DataCollection />}
 
+      <Box
+        padding="SP1" direction="horizontal" gap="SP3"
       >
-        Duplicate Items ({duplicateCountItems.toString()})
 
-      </Button>
+
+
+        <Button
+          onClick={duplicateExpensesItems}
+          disabled={running}
+          prefixIcon={<DataCollection />}
+
+        >
+          Duplicate Items ({(duplicateCountItems * duplicateExpensesOptions.itterations).toString()})
+
+        </Button>
+      </Box>
+
+
 
     </Box>
 
@@ -1466,8 +1657,8 @@ const DashboardPage: FC = () => {
     <WixDesignSystemProvider>
       <Page height="100vh">
         <Page.Header
-          title="BB Broadway Reporting"
-          subtitle="Bookings, Events & Stores Reporting"
+          title="BB Broadway"
+          subtitle="Income & Expenses Reporting"
           actionsBar={
             <>
 
@@ -1481,6 +1672,12 @@ const DashboardPage: FC = () => {
                   Open CMS
                   <DataCollection />
                 </Button>
+
+                <Button onClick={() => window.open(backupsLink, "_blank")} priority="secondary">
+                  Backups
+                  <Saved />
+                </Button>
+
                 <Button priority="secondary" onClick={runSums} disabled={running}>
                   Refresh
                   <Refresh />
@@ -1540,7 +1737,7 @@ const DashboardPage: FC = () => {
 
 
               <Card>
-               
+
                 <Accordion
                   items={[
                     accordionItemBuilder({

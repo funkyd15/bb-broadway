@@ -2,15 +2,13 @@
 import { orders, guests, wixEventsV2 } from "@wix/events";
 import { bulkSaveSets } from "./data-utilities";
 import { wixAppIds } from "./utilities";
-import { getUKTaxYear, TaxYearFormat ,config} from "./utilities";
+import { getUKTaxYear, TaxYearFormat, config } from "./utilities";
 
 const anaylticsCollection = "eventsAnalytics";
 const limit = 100;
 
 export async function queryEventsOrders(startDate: Date, endDate: Date, statusState: Function) {
     statusState("Running queryEventsOrders...");
-
-
 
     let allItems = [];
     function updateStatus(page?: Number) {
@@ -28,22 +26,52 @@ export async function queryEventsOrders(startDate: Date, endDate: Date, statusSt
             },
             paging: { limit: 400 },
         }, {
-            fields: ["DETAILS"]
+            fields: ["DETAILS", "CATEGORIES"]
         });
 
-        console.log(eventsResponse);
+        // console.log(eventsResponse);
         const eventItems = eventsResponse.events;
-        
-        
+
+
         const options = { orderNumber: orderNumbers, limit: 400, fieldset: ["DETAILS", "INVOICE", "TICKETS"] }
         const response = await orders.listOrders(options);
         console.log({ orderNumbers });
-        
+
         console.log({ guestOrders: response.orders });
-        
-        const allowableStatus =  ["PAID", "PARTIALLY_REFUNDED"];
+
+        const allowableStatus = ["PAID", "PARTIALLY_REFUNDED"];
         const items = await response.orders;
         // const items = await response.orders?.filter(n=>allowableStatus.includes(n?.status));
+
+        const serviceTypesMapping = [
+            { findText: "baby and me", output: "Baby and Me" },
+            { findText: "tiny stars", output: "Tiny Stars" },
+            { findText: "little stars", output: "Little Stars" },
+            { findText: "rising stars", output: "Rising Stars" },
+            { findText: "future stars", output: "Future Stars" },
+            { findText: "toddler and me", output: "Toddler and Me" },
+            { findText: "the ensemble", output: "The Ensemble" },
+            { findText: "big top circus", output: "Big Top Circus" },
+            { findText: "creative craft", output: "Creative Craft" }
+        ];
+
+        function extractYear(str: string) {
+            return str.match(/\b\d{4}\b/)?.[0] || "";
+        }
+
+        function extractSeason(str: string) {
+            return str.match(/\b(Spring|Summer|Autumn|Winter)\b/i)?.[0] || "";
+        }
+
+        const eventMainCategories = [{
+            "name": "Camps",
+            "_id": "acf8b434-5ad2-4f4d-9744-fda8ae10ddd1",
+        },
+        {
+            "name": "Other",
+            "_id": "d5e9e34b-b08d-40ac-b68f-1cf1f7e74719",
+        }]
+
 
         let parsedItems = [];
         items.forEach(i => {
@@ -51,6 +79,41 @@ export async function queryEventsOrders(startDate: Date, endDate: Date, statusSt
             const createdDateYYYYMMDD = createdDate.toISOString().split("T")[0];
             const findEvent = eventItems.find(n => n._id === i.eventId);
             const eventTitle = (findEvent?.title || "--BLANK--").trim();
+            const location = (findEvent?.location?.name || "--BLANK--").trim();
+            const locationFormatted = (findEvent?.location?.address?.formatted || "--BLANK--").trim();
+            const serviceType = serviceTypesMapping.find(m =>
+                eventTitle.toLowerCase().includes(m.findText)
+            )?.output || "Other";
+
+            let mainCategory;
+            try {
+
+                const eventCategories = findEvent?.categories?.categories.map(c => c._id) || [];
+                eventMainCategories.forEach(eventMainCategory => {
+                    if (eventCategories.includes(eventMainCategory._id)) {
+                        mainCategory = eventMainCategory.name;
+                    }
+                });
+            } catch (error) {
+                //
+            }
+            try {
+
+                if (!mainCategory) {
+                    if (eventTitle.toLowerCase().includes("camp")) {
+                        mainCategory = "Camps"
+                    }
+                }
+            } catch (error) {
+                //
+            }
+
+            if (!mainCategory) {
+                mainCategory = "Other"
+            }
+
+            const year = extractYear(eventTitle);
+            const term = extractSeason(eventTitle);
 
             const parsedItem = {
                 _id: i.reservationId,
@@ -61,15 +124,26 @@ export async function queryEventsOrders(startDate: Date, endDate: Date, statusSt
                 orderNumber: i.orderNumber,
                 tickets: i.tickets,
                 ticketsQuantity: i.ticketsQuantity,
-                event: config.includeItem ? findEvent : undefined,
                 eventTitle: eventTitle,
                 title: eventTitle,
                 email: i.email,
                 amountReceived: Number(i.invoice?.revenue?.value),
                 couponCode: i.invoice?.discount?.discounts[0]?.coupon?.code,
-                link:findEvent?._id ? `https://manage.wix.com/dashboard/0210b701-c715-482e-bdcf-2e8185181308/events/event/${findEvent?._id}/orders/${i.orderNumber}` : undefined,
+                link: findEvent?._id ? `https://manage.wix.com/dashboard/0210b701-c715-482e-bdcf-2e8185181308/events/event/${findEvent?._id}/orders/${i.orderNumber}` : undefined,
                 paymentStatus: i.status,
-              item: config.includeItem ? i : undefined,
+                item: config.includeItem ? i : undefined,
+                event: config.includeItem ? findEvent : undefined,
+                // event: findEvent,
+                // item: i,
+                location,
+                parseLocation: location,
+                locationFormatted,
+                term: term || "--BLANK--",
+                year: year || "--BLANK--",
+                termYear: [year, term].filter(Boolean).join(" ") || "--BLANK--",
+                serviceType:serviceType||"Other",
+                mainCategory,
+
             }
             parsedItems.push(parsedItem);
 
@@ -116,7 +190,7 @@ export async function queryEventsOrders(startDate: Date, endDate: Date, statusSt
 
     statusState(`Saving: ${allItems.length}`)
 
-    await bulkSaveSets(allItems, anaylticsCollection,statusState);
+    await bulkSaveSets(allItems, anaylticsCollection, statusState);
 
     return allItems;
 

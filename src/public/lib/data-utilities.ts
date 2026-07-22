@@ -1,5 +1,6 @@
 import { items, collections } from '@wix/data';
 import { YYYYMMDD } from './utilities';
+import { v4 as uuidv4 } from 'uuid';
 
 export async function bulkLockOrUnlockAnalytics(collection: string, startDate: string, endDate: string, lock: Boolean, statusState: Function) {
     let count = 0;
@@ -396,10 +397,67 @@ export async function aggregateBookingsServiceTermYearLocation(
 
     return allItems as any[];
 }
+export async function aggregateEvents(
+    startDate: string,
+    endDate: string,
+): Promise<any[]> {
+    let allItems = [];
+    const filter = items
+        .filter()
+        .ge('createdDate', startDate)
+        .le('createdDate', endDate)
+        .ne('eventTitle',undefined);
+
+
+    function formAgg(collection: string) {
+        return items
+            .aggregate(collection)
+            .filter(filter)
+            .descending('amountReceivedSum')
+            .group('eventTitle','serviceType', 'year', 'term', 'parseLocation','mainCategory')
+            .limit(1000)
+    }
+
+
+
+    let resultsAmount = await formAgg('eventsAnalytics').sum('amountReceived').run();
+
+    allItems.push(...resultsAmount.items)
+
+    // console.log(results);
+    while (resultsAmount.hasNext()) {
+        resultsAmount = await resultsAmount.next();
+        allItems.push(...resultsAmount.items)
+    }
+
+   
+    let resultsExpenses = await formAgg('expensesAnalytics').sum('amountExpensed').run();
+    allItems.push(...resultsExpenses.items)
+
+    while (resultsExpenses.hasNext()) {
+        resultsExpenses = await resultsExpenses.next();
+        allItems.push(...resultsExpenses.items)
+    }
+
+
+    allItems = combineArrayByKey(allItems, "_id");
+
+    // allItems = allItems.filter(i => i._id?.serviceType && i._id?.year && i._id?.term && i._id?.parseLocation);
+
+    allItems.forEach(i => {
+        i.sum = (i.amountReceivedSum || 0) + (i.amountExpensedSum || 0);
+    });
+
+    console.log("aggregateEvents", allItems);
+
+    return allItems as any[];
+}
+
+
 export async function aggregateExpenses(
     startDate: string,
     endDate: string,
-    groups:string[],
+    groups: string[],
 ): Promise<any[]> {
     let allItems = [];
     const filter = items
@@ -636,65 +694,146 @@ export async function getCollectionFields(dataCollectionId: string) {
     })
 }
 
-export function addDaysYYYYMMDD(dateString: string, days: number): string {
-    const date = new Date(`${dateString}T00:00:00`);
+export enum TimeUnit {
+    DAYS = 'DAYS',
+    MONTHS = 'MONTHS',
+    YEARS = 'YEARS',
+}
 
-    if (isNaN(date.getTime())) {
+export function addToYYYYMMDD(
+    dateString: string,
+    amount: number,
+    unit: TimeUnit = TimeUnit.DAYS
+): string {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateString);
+
+    if (!match) {
         throw new Error(`Invalid date: ${dateString}`);
     }
 
-    date.setDate(date.getDate() + days);
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
 
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
+    const date = new Date(Date.UTC(year, month - 1, day));
 
-    // Return YYYY-MM-DD
-    return `${year}-${month}-${day}`;
+    // Validate the input date
+    if (
+        date.getUTCFullYear() !== year ||
+        date.getUTCMonth() !== month - 1 ||
+        date.getUTCDate() !== day
+    ) {
+        throw new Error(`Invalid date: ${dateString}`);
+    }
+
+    switch (unit) {
+        case TimeUnit.DAYS:
+            date.setUTCDate(date.getUTCDate() + amount);
+            break;
+
+        case TimeUnit.MONTHS: {
+            const originalDay = date.getUTCDate();
+
+            // Move to first day to avoid overflow
+            date.setUTCDate(1);
+            date.setUTCMonth(date.getUTCMonth() + amount);
+
+            // Last day of target month
+            const lastDay = new Date(
+                Date.UTC(
+                    date.getUTCFullYear(),
+                    date.getUTCMonth() + 1,
+                    0
+                )
+            ).getUTCDate();
+
+            date.setUTCDate(Math.min(originalDay, lastDay));
+            break;
+        }
+
+        case TimeUnit.YEARS: {
+            const originalDay = date.getUTCDate();
+            const originalMonth = date.getUTCMonth();
+
+            date.setUTCDate(1);
+            date.setUTCFullYear(date.getUTCFullYear() + amount);
+
+            const lastDay = new Date(
+                Date.UTC(
+                    date.getUTCFullYear(),
+                    originalMonth + 1,
+                    0
+                )
+            ).getUTCDate();
+
+            date.setUTCMonth(originalMonth);
+            date.setUTCDate(Math.min(originalDay, lastDay));
+            break;
+        }
+    }
+
+    const y = date.getUTCFullYear();
+    const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(date.getUTCDate()).padStart(2, '0');
+
+    return `${y}-${m}-${d}`;
 }
 
-export async function duplicateCMSItems(collection: string, queryOptions: any[], modifyOptions: any[], addDays: number) {
+export async function duplicateCMSItems(collection: string, queryOptions: any[], modifyOptions: any[], options: { timeUnit: TimeUnit, itterations: number, value: number }) {
+    const duplicateDateStamp = new Date();
+    const duplicateProcessId = uuidv4();
     let query = items.query(collection);
-    queryOptions.filter(i=>i.value).forEach(option => {
+    queryOptions.filter(i => i.value).forEach(option => {
         query = query.eq(option.key, option.value);
     });
     const results = await query.limit(1000).find();
     let dataItems = results.items;
+    let duplicatedItems: any = [];
 
-    
-    if(dataItems.length > 0){
+    if (dataItems.length > 0) {
         dataItems.forEach(i => {
-            delete i._id;
-            if (i.createdDate) {
-                i.createdDate = addDaysYYYYMMDD(i.createdDate, addDays);
+            for (let itteration = 1; itteration <= options.itterations; itteration++) {
+                let dupeItem = structuredClone(i);
+                delete dupeItem._id;
+
+                if (dupeItem.createdDate) {
+                   
+                    dupeItem.createdDate = addToYYYYMMDD(dupeItem.createdDate, options.value * itteration, options.timeUnit);
+                }
+                modifyOptions.filter(i => i.value).forEach(option => {
+                    dupeItem[option.key] = option.value
+                });
+                dupeItem.duplicateDateStamp = duplicateDateStamp;
+                dupeItem.duplicateProcessId = duplicateProcessId;
+                duplicatedItems.push(dupeItem);
             }
-            modifyOptions.filter(i=>i.value).forEach(option => {
-                i[option.key] = option.value
-            });
+
         });
 
-        const bulkResults = await items.bulkInsert(collection, dataItems);
-    
+        const bulkResults = await items.bulkInsert(collection, duplicatedItems);
+
         // console.log(dataItems);
         // console.log(bulkResults);
-        return { dataItems, bulkResults }
+        return { duplicatedItems, bulkResults }
     }
 
-    return {dataItems}
+    return { duplicatedItems }
 
 }
 
 export async function countCMSItemsToDuplicate(collection: string, queryOptions: any[]) {
     // console.log({collection,queryOptions});
-    
+
     let query = items.query(collection);
-    queryOptions.filter(i=>i.value).forEach(option => {
-        query = query.eq(option.key, option.value);
+    queryOptions.filter(i => i.value).forEach(option => {
+        if(option.value){
+            query = query.eq(option.key, option.value);
+        }
     });
-    const results = await query.limit(1000).find({returnTotalCount:true});
+    const results = await query.limit(1000).find({ returnTotalCount: true });
 
     // console.log(results);
-    
+
 
     return results.totalCount;
 
