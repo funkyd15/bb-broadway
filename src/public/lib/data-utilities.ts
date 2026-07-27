@@ -439,8 +439,9 @@ export async function aggregateEvents(
         allItems.push(...resultsExpenses.items)
     }
 
-
-    allItems = combineArrayByKey(allItems, "_id");
+    
+    // allItems = combineArrayByKey(allItems, "_id");
+    allItems = combineArrayByKey(allItems, "eventTitle");
 
     // allItems = allItems.filter(i => i._id?.serviceType && i._id?.year && i._id?.term && i._id?.parseLocation);
 
