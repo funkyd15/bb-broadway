@@ -144,26 +144,26 @@ const DashboardPage: FC = () => {
 
   };
 
-  function addToFilter(value: string, key: string) {
+  function addToFilter(value: string, key: string, filter: any, setFilterFunction: Function) {
 
-    let valuesArray = filters[key] || [];
+    let valuesArray = filter[key] || [];
     valuesArray.push(value);
     valuesArray = [...new Set(valuesArray)];
     valuesArray.sort();
 
-    setFilters({ ...filters, [key]: valuesArray });
+    setFilterFunction({ ...filter, [key]: valuesArray });
   }
 
-  function removeFromFilter(value: string, key: string) {
+  function removeFromFilter(value: string, key: string, filter: any, setFilterFunction: Function) {
 
-    let valuesArray = filters[key] || [];
+    let valuesArray = filter[key] || [];
     if (valuesArray.includes(value)) {
       valuesArray = valuesArray.filter(i => i !== value);
       valuesArray.sort();
     }
 
 
-    setFilters({ ...filters, [key]: valuesArray });
+    setFilterFunction({ ...filters, [key]: valuesArray });
   }
 
   function processRows(rows: any[]) {
@@ -236,16 +236,24 @@ const DashboardPage: FC = () => {
   const [duplicateCollection, setDuplicateCollection] = useState<string>('expensesAnalytics');
   const [duplicateCountItems, setDuplicateCountItems] = useState<Number>(0);
 
-    const [eventByTitleRows, setEventByTitleRows] = useState<any[]>([]);
-    const [eventByTitleFilteredRows, setEventByTitleFilteredRows] = useState<any[]>([]);
+  const [eventByTitleRows, setEventByTitleRows] = useState<any[]>([]);
+  const [eventByTitleFilteredRows, setEventByTitleFilteredRows] = useState<any[]>([]);
 
+
+  interface sortingKeyValue {
+    key: string;
+    direction: 'A-Z' | 'Z-A';
+  }
 
 
   const [filters, setFilters] = useState<{}>({});
-  const [sorting, setSorting] = useState<{
-    key: string;
-    direction: 'A-Z' | 'Z-A';
-  }>({
+  const [sorting, setSorting] = useState<sortingKeyValue>({
+    key: "amountReceivedSum",
+    direction: 'Z-A',
+  });
+
+  const [eventsTitlefilters, setEventsTitleFilters] = useState<{}>({});
+  const [eventsTitleSorting, setEventsTitleSorting] = useState<sortingKeyValue>({
     key: "amountReceivedSum",
     direction: 'Z-A',
   });
@@ -439,11 +447,8 @@ const DashboardPage: FC = () => {
     setExpensesTypeSubTypeRows(expensesTypeSubTypeRows)//29
     setExpensesSubTypeRows(expensesSubTypeRows)//30
 
-    setEventByTitleRows(eventByTitleRows) //31
-    setEventByTitleFilteredRows(eventByTitleRows) //31
-
+    setEventByTitleRows(processRows(eventByTitleRows)) //31
     // console.log("locationRows", locationRows);
-
 
   }
 
@@ -1184,7 +1189,7 @@ const DashboardPage: FC = () => {
   function getDropdownOptionsFromRows(rows: any[], key: string, allValue?: string) {
     const values = [...new Set(rows.map(i => i[key]))].sort();
     // const options = values.map((i: any, index: number) => ({ id: (index + 1).toString(), value: i }));
-    const options = values.map((i: any, index: number) => ({ id: i, value: i }));
+    const options = values.map((i: any, index: number) => ({ id: i, value: i })).filter(i=>i.value);
     if (allValue) {
       options.unshift({ id: "0", value: allValue });
     }
@@ -1195,52 +1200,49 @@ const DashboardPage: FC = () => {
 
 
   useEffect(() => {
-    filterAndSortServiceTermYearLocationRow();
-  }, [serviceTermYearLocationRows]);
+    filterRows(serviceTermYearLocationRows, filters, sorting, setServiceTermYearLocationFilteredRows);
+  }, [serviceTermYearLocationRows, filters, sorting]);
 
 
   useEffect(() => {
-    filterAndSortServiceTermYearLocationRow();
-  }, [filters, sorting]);
+    filterRows(eventByTitleRows, eventsTitlefilters, eventsTitleSorting, setEventByTitleFilteredRows);
+  }, [eventByTitleRows, eventsTitlefilters, eventsTitleSorting]);
 
   useEffect(() => {
     console.log(duplicateExpensesOptions);
 
   }, [duplicateExpensesOptions]);
 
-  function filterAndSortServiceTermYearLocationRow() {
-    let filteredRows = structuredClone(serviceTermYearLocationRows);
 
-    for (const [key, value] of Object.entries(filters)) {
-      //if not any
-      // if (value.id !== "0") {
-      //   filteredRows = filteredRows.filter(i => i[key] && i[key] === value.value);
-      // }
+  function filterRows(sourceRows: any[], filter: any, sort: sortingKeyValue, setFunction: Function,) {
+    let filteredRows = structuredClone(sourceRows);
+
+    for (const [key, value] of Object.entries(filter)) {
       if (value && value.length > 0) {
         filteredRows = filteredRows.filter(i => i[key] && value.includes(i[key]));
       }
     }
 
     filteredRows.sort(function (a, b) {
-      const sortKey = sorting.key;
-      if (a[sortKey] < b[sortKey]) { return sorting.direction === "A-Z" ? -1 : 1; }
-      if (a[sortKey] > b[sortKey]) { return sorting.direction === "A-Z" ? 1 : -1; }
+      const sortKey = sort.key;
+      if (a[sortKey] < b[sortKey]) { return sort.direction === "A-Z" ? -1 : 1; }
+      if (a[sortKey] > b[sortKey]) { return sort.direction === "A-Z" ? 1 : -1; }
       return 0;
     })
 
-    setServiceTermYearLocationFilteredRows(filteredRows);
+    setFunction(filteredRows);
   }
 
-  const makeMultiCheckbox = (key: string, placeholder: string) => {
+  const makeMultiCheckbox = (key: string, placeholder: string, rows: any[], filter: any, setFilterFunction: Function) => {
     return (<MultiSelectCheckbox
       size="medium"
       placeholder={placeholder}
-      selectedOptions={filters[key] || []}
-      onSelect={(value) => addToFilter(value, key)}
-      onDeselect={(value) => removeFromFilter(value, key)}
-      options={getDropdownOptionsFromRows(serviceTermYearLocationRows, key)}
+      selectedOptions={filter[key] || []}
+      onSelect={(value) => addToFilter(value, key, filter, setFilterFunction)}
+      onDeselect={(value) => removeFromFilter(value, key, filter, setFilterFunction)}
+      options={getDropdownOptionsFromRows(rows, key)}
       clearButton
-      onClear={() => setFilters({ ...filters, [key]: [] })}
+      onClear={() => setFilterFunction({ ...filter, [key]: [] })}
       popoverProps={{ appendTo: 'window' }}
 
     />);
@@ -1256,21 +1258,19 @@ const DashboardPage: FC = () => {
         </TableToolbar.Item>
 
         <TableToolbar.Item>
-          {makeMultiCheckbox("serviceType", "Service Type")}
-
+          {makeMultiCheckbox("serviceType", "Service Type", serviceTermYearLocationRows, filters, setFilters)}
         </TableToolbar.Item>
-        <TableToolbar.Item>
-          {makeMultiCheckbox("year", "Year")}
 
+        <TableToolbar.Item>
+          {makeMultiCheckbox("year", "Year", serviceTermYearLocationRows, filters, setFilters)}
         </TableToolbar.Item>
-        <TableToolbar.Item>
-          {makeMultiCheckbox("term", "Term")}
 
+        <TableToolbar.Item>
+          {makeMultiCheckbox("term", "Term", serviceTermYearLocationRows, filters, setFilters)}
         </TableToolbar.Item>
+
         <TableToolbar.Item>
-          {makeMultiCheckbox("parseLocation", "Locations")}
-
-
+          {makeMultiCheckbox("parseLocation", "Locations", serviceTermYearLocationRows, filters, setFilters)}
         </TableToolbar.Item>
 
       </TableToolbar.ItemGroup>
@@ -1316,6 +1316,82 @@ const DashboardPage: FC = () => {
 
     </TableToolbar>
 
+  const tableEventsTitleFilters =
+    <TableToolbar>
+      <TableToolbar.ItemGroup position="start">
+        <TableToolbar.Item>
+          <Filter />
+        </TableToolbar.Item>
+
+        <TableToolbar.Item>
+          {makeMultiCheckbox("eventTitle", "Event Title", eventByTitleRows, eventsTitlefilters, setEventsTitleFilters)}
+        </TableToolbar.Item>
+
+        <TableToolbar.Item>
+          {makeMultiCheckbox("serviceType", "Service", eventByTitleRows, eventsTitlefilters, setEventsTitleFilters)}
+        </TableToolbar.Item>
+
+        <TableToolbar.Item>
+          {makeMultiCheckbox("mainCategory", "Category", eventByTitleRows, eventsTitlefilters, setEventsTitleFilters)}
+        </TableToolbar.Item>
+
+        <TableToolbar.Item>
+          {makeMultiCheckbox("year", "Year", eventByTitleRows, eventsTitlefilters, setEventsTitleFilters)}
+        </TableToolbar.Item>
+
+        <TableToolbar.Item>
+          {makeMultiCheckbox("term", "Term", eventByTitleRows, eventsTitlefilters, setEventsTitleFilters)}
+        </TableToolbar.Item>
+
+        <TableToolbar.Item>
+          {makeMultiCheckbox("parseLocation", "Locations", eventByTitleRows, eventsTitlefilters, setEventsTitleFilters)}
+
+
+        </TableToolbar.Item>
+
+      </TableToolbar.ItemGroup>
+
+      <TableToolbar.ItemGroup position="start">
+        <TableToolbar.Item>
+          {sorting.direction === "A-Z" ? <SortAZ /> : <SortZA />}
+        </TableToolbar.Item>
+        <TableToolbar.Item>
+          <Dropdown
+            options={[
+              { id: 'amountReceivedSum', value: 'Received' },
+              { id: 'amountExpensedSum', value: 'Expensed' },
+              { id: 'sum', value: 'Sum' },
+              { id: 'parseLocation', value: 'Location' },
+              { id: 'serviceType', value: 'Service' },
+              { id: 'year', value: 'Year' },
+              { id: 'term', value: 'Term' },
+            ]}
+            selectedId={eventsTitleSorting?.key}
+            border="round"
+            size="small"
+            popoverProps={{ appendTo: 'window' }}
+            onSelect={(key) => setEventsTitleSorting({ ...eventsTitleSorting, ...{ key: key.id } })}
+            valueParser={({ value }) => value}
+          />
+        </TableToolbar.Item>
+        <TableToolbar.Item>
+          <Dropdown
+            options={[
+              { id: 'Z-A', value: 'Z-A' },
+              { id: 'A-Z', value: 'A-Z' },
+            ]}
+            selectedId={eventsTitleSorting?.direction}
+            border="round"
+            size="small"
+            popoverProps={{ appendTo: 'window' }}
+            onSelect={(direction) => setEventsTitleSorting({ ...eventsTitleSorting, ...{ direction: direction.value } })}
+            valueParser={({ value }) => value}
+          />
+        </TableToolbar.Item>
+      </TableToolbar.ItemGroup>
+
+    </TableToolbar>
+
 
   const taxTables = [
     { title: `Tax Years`, rows: taxYearRows, columns: taxYearColumns, accordion: true },
@@ -1335,7 +1411,7 @@ const DashboardPage: FC = () => {
 
   const eventTables = [
     { title: `Events`, rows: eventRows, columns: eventColumns, accordion: true },
-    { title: `Events By Title [WIP]`, rows: eventByTitleFilteredRows, columns: eventByTitleColumns, accordion: true },
+    { title: `Events By Title [WIP]`, rows: eventByTitleFilteredRows, columns: eventByTitleColumns, accordion: true,toolbar: tableEventsTitleFilters},
   ]
 
   const storesTables = [
