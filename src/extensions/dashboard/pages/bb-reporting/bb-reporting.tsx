@@ -35,7 +35,8 @@ import {
   DataCollection,
   Refresh,
   DateSmall,
-  Saved
+  Saved,
+  StatusWarningFilled,
 } from "@wix/wix-ui-icons-common/odeditor";
 
 import type { TableColumn } from '@wix/patterns';
@@ -183,6 +184,7 @@ const DashboardPage: FC = () => {
   const [status, setStatus] = useState<String>("Ready");
   const [subStatus, setSubStatus] = useState<String>("Ready");
   const [dateRange, setDateRange] = useState<String>("");
+  const [showWarning, setShowWarning] = useState<Boolean>(false);
 
   const [bookingsDateRange, setBookingsDateRange] = useState<String>("");
   const [storesDateRange, setStoresDateRange] = useState<String>("");
@@ -430,6 +432,10 @@ const DashboardPage: FC = () => {
         summaryItem.sum = summaryItem.value + summaryItem.amountExpensedSum;
       }
     });
+
+
+    setShowWarning(`${bookingsDateRange}${eventsDateRange}`.includes("⚠️"));
+
 
     setSummaryRows(summary);
 
@@ -1189,7 +1195,7 @@ const DashboardPage: FC = () => {
   function getDropdownOptionsFromRows(rows: any[], key: string, allValue?: string) {
     const values = [...new Set(rows.map(i => i[key]))].sort();
     // const options = values.map((i: any, index: number) => ({ id: (index + 1).toString(), value: i }));
-    const options = values.map((i: any, index: number) => ({ id: i, value: i })).filter(i=>i.value);
+    const options = values.map((i: any, index: number) => ({ id: i, value: i })).filter(i => i.value);
     if (allValue) {
       options.unshift({ id: "0", value: allValue });
     }
@@ -1411,7 +1417,7 @@ const DashboardPage: FC = () => {
 
   const eventTables = [
     { title: `Events`, rows: eventRows, columns: eventColumns, accordion: true },
-    { title: `Events By Title [WIP]`, rows: eventByTitleFilteredRows, columns: eventByTitleColumns, accordion: true,toolbar: tableEventsTitleFilters},
+    { title: `Events By Title`, rows: eventByTitleFilteredRows, columns: eventByTitleColumns, accordion: true, toolbar: tableEventsTitleFilters },
   ]
 
   const storesTables = [
@@ -1817,10 +1823,11 @@ const DashboardPage: FC = () => {
                 <Accordion
                   items={[
                     accordionItemBuilder({
-                      title: 'Process WIX App Data',
+                      title: `Process WIX App Data${showWarning ? '⚠️' : ''}`,
                       children: (
                         <Box padding="SP1" direction="vertical" gap="SP3">
                           <Heading size="medium">By Date of Purchase: {dateRange}</Heading>
+                          {showWarning ? <Text>⚠️ Data may be out-of-date</Text> : undefined}
                           <Box padding="SP3">
                             <MultiCheckbox
                               items={[

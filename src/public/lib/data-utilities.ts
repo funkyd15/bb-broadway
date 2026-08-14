@@ -406,7 +406,7 @@ export async function aggregateEvents(
         .filter()
         .ge('createdDate', startDate)
         .le('createdDate', endDate)
-        .ne('eventTitle',undefined);
+        .ne('eventTitle', undefined);
 
 
     function formAgg(collection: string) {
@@ -414,7 +414,7 @@ export async function aggregateEvents(
             .aggregate(collection)
             .filter(filter)
             .descending('amountReceivedSum')
-            .group('eventTitle','serviceType', 'year', 'term', 'parseLocation','mainCategory')
+            .group('eventTitle', 'serviceType', 'year', 'term', 'parseLocation', 'mainCategory')
             .limit(1000)
     }
 
@@ -430,7 +430,7 @@ export async function aggregateEvents(
         allItems.push(...resultsAmount.items)
     }
 
-   
+
     let resultsExpenses = await formAgg('expensesAnalytics').sum('amountExpensed').run();
     allItems.push(...resultsExpenses.items)
 
@@ -439,7 +439,7 @@ export async function aggregateEvents(
         allItems.push(...resultsExpenses.items)
     }
 
-    
+
     // allItems = combineArrayByKey(allItems, "_id");
     allItems = combineArrayByKey(allItems, "eventTitle");
 
@@ -664,6 +664,25 @@ function combineArrayByKey<T extends AnyRecord>(
 }
 
 export async function getCreatedDateRange(collection: string): Promise<string> {
+    function isOutOfDate(compareDate: Date, allowableDays: number) {
+        const compare = new Date(
+            compareDate.getFullYear(),
+            compareDate.getMonth(),
+            compareDate.getDate()
+        );
+
+        const today = new Date(
+            new Date().getFullYear(),
+            new Date().getMonth(),
+            new Date().getDate()
+        );
+
+        const difference = today.getTime() - compare.getTime();
+        const millisecondsPerDay = 24 * 60 * 60 * 1000;
+
+        return difference > allowableDays * millisecondsPerDay;
+    }
+
     try {
         const [oldestResult, newestResult] = await Promise.all([
             items.query(collection).ascending('createdDate').limit(1).find(),
@@ -677,7 +696,7 @@ export async function getCreatedDateRange(collection: string): Promise<string> {
             return '';
         }
 
-        return `${oldestDate} - ${newestDate}`;
+        return `${oldestDate} - ${newestDate}${isOutOfDate(new Date(newestDate), 0) ? '⚠️' : ''}`;
     } catch (error) {
         console.error(`Failed to get date range for ${collection}`, error);
         return 'err';
@@ -798,7 +817,7 @@ export async function duplicateCMSItems(collection: string, queryOptions: any[],
                 delete dupeItem._id;
 
                 if (dupeItem.createdDate) {
-                   
+
                     dupeItem.createdDate = addToYYYYMMDD(dupeItem.createdDate, options.value * itteration, options.timeUnit);
                 }
                 modifyOptions.filter(i => i.value).forEach(option => {
@@ -827,7 +846,7 @@ export async function countCMSItemsToDuplicate(collection: string, queryOptions:
 
     let query = items.query(collection);
     queryOptions.filter(i => i.value).forEach(option => {
-        if(option.value){
+        if (option.value) {
             query = query.eq(option.key, option.value);
         }
     });
