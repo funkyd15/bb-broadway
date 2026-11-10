@@ -1,4 +1,4 @@
-import React, { type FC, useState, useEffect, useMemo, useCallback } from 'react';
+import React, { type FC, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Page,
   WixDesignSystemProvider,
@@ -174,7 +174,6 @@ const DashboardPage: FC = () => {
     if (finderTab !== 'builder') return;
     setSelectedKeys(resolved.missing.length || resolved.problem ? [] : resolved.found.map(l => l.key));
     setMatchMode('all');
-    setContactRows(null);
   }, [resolved, finderTab]);
 
   // ---- Browse ----
@@ -189,26 +188,46 @@ const DashboardPage: FC = () => {
   }, [parsedLabels, browseGroup, browseSearch]);
 
   function toggleSelected(key: string) {
-    setContactRows(null);
     setSelectedKeys(keys => (keys.includes(key) ? keys.filter(k => k !== key) : [...keys, key]));
   }
 
   // ---- Contacts ----
 
-  async function findContacts() {
-    if (!selectedKeys.length) return;
-    setLoadingContacts(true);
-    setContactRows(null);
-    try {
-      const rows = await queryContactsByFilter(labelKeysFilter(selectedKeys, matchMode), labelNames, setStatus);
-      setContactRows(rows);
-    } catch (error) {
-      console.error('queryContactsByFilter', error);
-      setStatus(`Error loading contacts: ${(error as Error)?.message || error}`);
-    } finally {
+  // Find contacts automatically whenever the selection or match mode changes.
+  // Debounced, and only the latest request may update the table.
+  const requestRef = useRef(0);
+  const selectionKey = selectedKeys.join('|');
+
+  useEffect(() => {
+    const keys = selectionKey ? selectionKey.split('|') : [];
+    const requestId = ++requestRef.current;
+    const isLatest = () => requestId === requestRef.current;
+
+    if (!keys.length) {
+      setContactRows(null);
       setLoadingContacts(false);
+      return;
     }
-  }
+
+    setLoadingContacts(true);
+    const timer = setTimeout(async () => {
+      try {
+        const rows = await queryContactsByFilter(
+          labelKeysFilter(keys, matchMode),
+          labelNames,
+          (s: string) => isLatest() && setStatus(s)
+        );
+        if (isLatest()) setContactRows(rows);
+      } catch (error) {
+        console.error('queryContactsByFilter', error);
+        if (isLatest()) setStatus(`Error loading contacts: ${(error as Error)?.message || error}`);
+      } finally {
+        if (isLatest()) setLoadingContacts(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [selectionKey, matchMode, labelNames]);
 
   // ---- Columns ----
 
@@ -358,10 +377,7 @@ const DashboardPage: FC = () => {
               <SegmentedToggle
                 size="small"
                 selected={matchMode}
-                onClick={(_e, value) => {
-                  setMatchMode(value as MatchMode);
-                  setContactRows(null);
-                }}
+                onClick={(_e, value) => setMatchMode(value as MatchMode)}
               >
                 <SegmentedToggle.Button value="all">All of these</SegmentedToggle.Button>
                 <SegmentedToggle.Button value="any">Any of these</SegmentedToggle.Button>
@@ -370,16 +386,13 @@ const DashboardPage: FC = () => {
           )}
 
           <Box gap="SP2">
-            <Button size="small" onClick={findContacts} disabled={!selectedKeys.length || loadingContacts}>
-              {loadingContacts ? 'Finding contacts...' : 'Find contacts'}
-            </Button>
             <Button
               size="small"
               priority="secondary"
               disabled={!selectedKeys.length}
               onClick={() => {
                 setSelectedKeys([]);
-                setContactRows(null);
+                setCriteria({});
               }}
             >
               Clear
@@ -394,7 +407,13 @@ const DashboardPage: FC = () => {
     <Card>
       <Card.Header
         title="Contacts"
-        subtitle={contactRows ? `${contactRows.length.toLocaleString('en-GB')} contacts found` : undefined}
+        subtitle={
+          loadingContacts
+            ? 'Finding contacts...'
+            : contactRows
+              ? `${contactRows.length.toLocaleString('en-GB')} contacts found`
+              : undefined
+        }
       />
       {contactRows && contactRows.length > 0 ? (
         <Table data={contactRows} columns={contactColumns}>
@@ -403,11 +422,13 @@ const DashboardPage: FC = () => {
       ) : (
         <Card.Content>
           <EmptyState
-            title={contactRows ? 'No contacts found' : 'No search yet'}
+            title={loadingContacts ? 'Finding contacts...' : contactRows ? 'No contacts found' : 'No labels selected'}
             subtitle={
-              contactRows
-                ? 'No contacts have this combination of labels.'
-                : 'Choose labels on the left, then click Find contacts.'
+              loadingContacts
+                ? undefined
+                : contactRows
+                  ? 'No contacts have this combination of labels.'
+                  : 'Choose labels on the left to see their contacts.'
             }
             skin="section"
           />
