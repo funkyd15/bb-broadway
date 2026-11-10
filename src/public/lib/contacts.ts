@@ -88,6 +88,11 @@ export async function loadLabelSummary(statusState: Function): Promise<LabelSumm
     };
 }
 
+// Contacts filter for a set of label keys: "all" = contact has every label, "any" = at least one.
+export function labelKeysFilter(keys: string[], mode: "all" | "any"): Record<string, any> {
+    return { "info.labelKeys": { [mode === "all" ? "$hasAll" : "$hasSome"]: keys } };
+}
+
 // All contacts matching a contacts query filter (e.g. a label facet's queryFilter).
 export async function queryContactsByFilter(
     filter: Record<string, any>,
