@@ -94,7 +94,7 @@ const DashboardPage: FC = () => {
     <WixDesignSystemProvider features={{ newColorsBranding: true }}>
       <Page>
         <Page.Header
-          title="Contacts & Labels"
+          title="BB Broadway Contacts"
           subtitle="See how contacts are labelled, and who is in each label"
           actionsBar={
             <Button prefixIcon={<Refresh />} onClick={refreshLabels} disabled={loadingLabels}>
