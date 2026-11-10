@@ -9,7 +9,6 @@ import {
   Cell,
   Layout,
   Table,
-  TableToolbar,
   Search,
   StatisticsWidget,
   EmptyState,
@@ -19,8 +18,11 @@ import {
   Tag,
   SegmentedToggle,
   SectionHelper,
+  TextButton,
 } from '@wix/design-system';
 import { Refresh } from '@wix/wix-ui-icons-common/odeditor';
+import { ExternalLinkSmall } from '@wix/wix-ui-icons-common';
+import { openContactInWix, openContactDetails } from '../../../../public/lib/dashboardLinks';
 import '@wix/design-system/styles.global.css';
 
 import {
@@ -232,19 +234,34 @@ const DashboardPage: FC = () => {
   // ---- Columns ----
 
   const browseColumns = [
-    { title: 'Group', render: (row: ParsedLabelRow) => row.group, width: '35%' },
     {
       title: 'Label',
-      render: (row: ParsedLabelRow) => (row.group === OTHER_GROUP ? row.displayName : row.value),
+      render: (row: ParsedLabelRow) => (
+        <Box direction="vertical">
+          <Text size="small">{row.group === OTHER_GROUP ? row.displayName : row.value}</Text>
+          <Text size="tiny" secondary>{row.group}</Text>
+        </Box>
+      ),
     },
-    { title: 'Contacts', render: (row: ParsedLabelRow) => row.count.toLocaleString('en-GB'), align: 'end' as const },
+    { title: 'Contacts', render: (row: ParsedLabelRow) => row.count.toLocaleString('en-GB'), align: 'end' as const, width: '90px' },
   ];
 
   const contactColumns = [
-    { title: 'Name', render: (row: ContactRow) => row.name, width: '25%' },
-    { title: 'Email', render: (row: ContactRow) => row.email, width: '40%' },
+    { title: 'Name', render: (row: ContactRow) => row.name, width: '24%' },
+    { title: 'Email', render: (row: ContactRow) => row.email, width: '34%' },
     { title: 'Phone', render: (row: ContactRow) => row.phone },
     { title: 'Created', render: (row: ContactRow) => row.createdDate },
+    {
+      title: '',
+      align: 'end' as const,
+      render: (row: ContactRow) => (
+        <span onClick={e => e.stopPropagation()}>
+          <TextButton size="small" suffixIcon={<ExternalLinkSmall />} onClick={() => openContactInWix(row._id)}>
+            Open in Wix
+          </TextButton>
+        </span>
+      ),
+    },
   ];
 
   // ---- Render pieces ----
@@ -270,14 +287,12 @@ const DashboardPage: FC = () => {
         <SegmentedToggle.Button value="freeTrials">Free trials</SegmentedToggle.Button>
       </SegmentedToggle>
 
-      <Layout gap="18px">
-        <Cell span={6}>{dropdown('type', 'Course type', 'Any course type')}</Cell>
-        {builderValues.location.length > 0 && (
-          <Cell span={6}>{dropdown('location', 'Location', 'Any location')}</Cell>
-        )}
-        <Cell span={6}>{dropdown('term', 'Term', 'Any term')}</Cell>
-        <Cell span={6}>{dropdown('year', 'Year', 'Any year')}</Cell>
-      </Layout>
+      <Box direction="vertical" gap="SP2">
+        {dropdown('type', 'Course type', 'Any course type')}
+        {builderValues.location.length > 0 && dropdown('location', 'Location', 'Any location')}
+        {dropdown('term', 'Term', 'Any term')}
+        {dropdown('year', 'Year', 'Any year')}
+      </Box>
 
       {resolved.problem && <SectionHelper appearance="warning">{resolved.problem}</SectionHelper>}
 
@@ -324,29 +339,21 @@ const DashboardPage: FC = () => {
       onRowClick={(row: ParsedLabelRow) => toggleSelected(row.key)}
       isRowActive={(row: ParsedLabelRow) => selectedKeys.includes(row.key)}
     >
-      <TableToolbar>
-        <TableToolbar.ItemGroup position="start">
-          <TableToolbar.Item>
-            <Box width="200px">
-              <Dropdown
-                size="small"
-                options={groupOptions}
-                selectedId={browseGroup}
-                onSelect={o => setBrowseGroup(String(o.id))}
-              />
-            </Box>
-          </TableToolbar.Item>
-          <TableToolbar.Item>
-            <Search
-              size="small"
-              placeholder="Search labels"
-              value={browseSearch}
-              onChange={e => setBrowseSearch(e.target.value)}
-              onClear={() => setBrowseSearch('')}
-            />
-          </TableToolbar.Item>
-        </TableToolbar.ItemGroup>
-      </TableToolbar>
+      <Box direction="vertical" gap="SP2" padding="SP3 SP4">
+        <Dropdown
+          size="small"
+          options={groupOptions}
+          selectedId={browseGroup}
+          onSelect={o => setBrowseGroup(String(o.id))}
+        />
+        <Search
+          size="small"
+          placeholder="Search labels"
+          value={browseSearch}
+          onChange={e => setBrowseSearch(e.target.value)}
+          onClear={() => setBrowseSearch('')}
+        />
+      </Box>
       <Table.Content />
     </Table>
   );
@@ -416,7 +423,11 @@ const DashboardPage: FC = () => {
         }
       />
       {contactRows && contactRows.length > 0 ? (
-        <Table data={contactRows} columns={contactColumns}>
+        <Table
+          data={contactRows}
+          columns={contactColumns}
+          onRowClick={(row: ContactRow) => openContactDetails({ contactId: row._id, labelNames: row.labelList })}
+        >
           <Table.Content />
         </Table>
       ) : (
@@ -468,7 +479,7 @@ const DashboardPage: FC = () => {
               <Text size="small" secondary>{status}</Text>
             </Cell>
 
-            <Cell span={5}>
+            <Cell span={4}>
               <Box direction="vertical" gap="SP4">
                 <Card>
                   <Card.Header title="Find a label" />
@@ -488,7 +499,7 @@ const DashboardPage: FC = () => {
               </Box>
             </Cell>
 
-            <Cell span={7}>{contactsCard}</Cell>
+            <Cell span={8}>{contactsCard}</Cell>
           </Layout>
         </Page.Content>
       </Page>

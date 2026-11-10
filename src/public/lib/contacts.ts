@@ -25,6 +25,7 @@ export interface ContactRow {
     phone: string;
     company: string;
     labels: string;
+    labelList: string[];
     createdDate: string;
     lastActivity: string;
 }
@@ -120,13 +121,15 @@ export async function queryContactsByFilter(
         const first = c.info?.name?.first || "";
         const last = c.info?.name?.last || "";
         const keys = c.info?.labelKeys?.items || [];
+        const labelList = keys.map(k => labelNames.get(k) || k).sort();
         return {
             _id: c._id || "",
             name: `${first} ${last}`.trim(),
             email: c.primaryInfo?.email || "",
             phone: c.primaryInfo?.phone || "",
             company: c.info?.company || "",
-            labels: keys.map(k => labelNames.get(k) || k).sort().join(", "),
+            labels: labelList.join(", "),
+            labelList,
             createdDate: c._createdDate ? new Date(c._createdDate).toLocaleDateString("en-GB") : "",
             lastActivity: c.lastActivity?.activityDate
                 ? new Date(c.lastActivity.activityDate).toLocaleDateString("en-GB")
