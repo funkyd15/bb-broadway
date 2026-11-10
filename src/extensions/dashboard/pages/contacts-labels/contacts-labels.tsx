@@ -162,6 +162,24 @@ const DashboardPage: FC = () => {
 
   const resolved = useMemo(() => resolve(criteria), [resolve, criteria]);
 
+  // Every label in this mode that mentions all the chosen values (for reference only, not selected).
+  const relatedLabels = useMemo(() => {
+    const keys = (Object.keys(criteria) as CriteriaKey[]).filter(k => criteria[k]);
+    if (!keys.length) return [];
+    const groupRank = (g: string) => {
+      const i = STRUCTURED_GROUPS.indexOf(g);
+      return i === -1 ? STRUCTURED_GROUPS.length : i;
+    };
+    return parsedLabels
+      .filter(l => l.mode === labelMode && keys.every(k => l[k] === criteria[k]))
+      .sort(
+        (a, b) =>
+          groupRank(a.group) - groupRank(b.group) ||
+          (b.year || '').localeCompare(a.year || '') ||
+          a.displayName.localeCompare(b.displayName)
+      );
+  }, [parsedLabels, labelMode, criteria]);
+
   function updateCriteria(key: CriteriaKey, value: string) {
     setCriteria({ ...criteria, [key]: value || undefined });
   }
@@ -322,6 +340,23 @@ const DashboardPage: FC = () => {
           No single label covers this combination, so this finds contacts with all of these labels. They may
           match through different bookings in the same period.
         </SectionHelper>
+      )}
+
+      {relatedLabels.length > 0 && (
+        <Box direction="vertical" gap="SP1">
+          <Text size="small" weight="bold">All related labels ({relatedLabels.length})</Text>
+          <Box direction="vertical" gap="SP1" maxHeight="260px" overflowY="auto">
+            {relatedLabels.map(l => (
+              <Box key={l.key} gap="SP2" verticalAlign="middle">
+                <Box direction="vertical" flexGrow={1}>
+                  <Text size="small">{l.value}</Text>
+                  <Text size="tiny" secondary>{l.group}</Text>
+                </Box>
+                <Text size="small" secondary>{l.count.toLocaleString('en-GB')}</Text>
+              </Box>
+            ))}
+          </Box>
+        </Box>
       )}
 
       <Box>
