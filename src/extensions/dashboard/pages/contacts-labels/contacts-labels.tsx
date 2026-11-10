@@ -345,16 +345,33 @@ const DashboardPage: FC = () => {
       {relatedLabels.length > 0 && (
         <Box direction="vertical" gap="SP1">
           <Text size="small" weight="bold">All related labels ({relatedLabels.length})</Text>
+          <Text size="tiny" secondary>Click a label to add it to (or remove it from) the selected labels.</Text>
           <Box direction="vertical" gap="SP1" maxHeight="260px" overflowY="auto">
-            {relatedLabels.map(l => (
-              <Box key={l.key} gap="SP2" verticalAlign="middle">
-                <Box direction="vertical" flexGrow={1}>
-                  <Text size="small">{l.value}</Text>
-                  <Text size="tiny" secondary>{l.group}</Text>
-                </Box>
-                <Text size="small" secondary>{l.count.toLocaleString('en-GB')}</Text>
-              </Box>
-            ))}
+            {relatedLabels.map(l => {
+              const selected = selectedKeys.includes(l.key);
+              return (
+                <div
+                  key={l.key}
+                  role="button"
+                  title={selected ? 'Remove from selected labels' : 'Add to selected labels'}
+                  onClick={() => toggleSelected(l.key)}
+                  style={{
+                    cursor: 'pointer',
+                    borderRadius: 6,
+                    padding: '2px 6px',
+                    background: selected ? 'var(--wds-color-fill-primary-hover, #e7f0ff)' : undefined,
+                  }}
+                >
+                  <Box gap="SP2" verticalAlign="middle">
+                    <Box direction="vertical" flexGrow={1}>
+                      <Text size="small" weight={selected ? 'bold' : undefined}>{l.value}</Text>
+                      <Text size="tiny" secondary>{l.group}</Text>
+                    </Box>
+                    <Text size="small" secondary>{l.count.toLocaleString('en-GB')}</Text>
+                  </Box>
+                </div>
+              );
+            })}
           </Box>
         </Box>
       )}
