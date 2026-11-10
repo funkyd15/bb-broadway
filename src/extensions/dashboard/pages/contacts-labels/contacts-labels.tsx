@@ -40,16 +40,15 @@ import {
   OTHER_GROUP,
   type ParsedLabel,
   type LabelCriteria,
+  type LabelMode,
 } from '../../../../public/lib/labels';
 
 type MatchMode = 'all' | 'any';
 type ParsedLabelRow = LabelRow & ParsedLabel;
+type CriteriaKey = keyof LabelCriteria;
 
 const ANY = '';
 const ALL_GROUPS = '__all__';
-
-const anyOption = (label: string) => ({ id: ANY, value: label });
-const toOptions = (values: string[]) => values.map(v => ({ id: v, value: v }));
 
 const DashboardPage: FC = () => {
   const [status, setStatus] = useState<string>('Ready');
@@ -58,6 +57,7 @@ const DashboardPage: FC = () => {
   const [summary, setSummary] = useState<LabelSummary | null>(null);
 
   const [finderTab, setFinderTab] = useState<string>('builder');
+  const [labelMode, setLabelMode] = useState<LabelMode>('bookings');
   const [criteria, setCriteria] = useState<LabelCriteria>({});
   const [browseGroup, setBrowseGroup] = useState<string>(ALL_GROUPS);
   const [browseSearch, setBrowseSearch] = useState<string>('');
@@ -80,15 +80,17 @@ const DashboardPage: FC = () => {
   );
   const labelNames = useMemo(() => new Map(parsedLabels.map(l => [l.key, l.displayName])), [parsedLabels]);
 
-  const builderOptions = useMemo(() => {
-    const terms = new Set(parsedLabels.map(l => l.term));
+  // All values seen in labels for the current mode (before narrowing).
+  const builderValues = useMemo(() => {
+    const modeLabels = parsedLabels.filter(l => l.mode === labelMode);
+    const terms = new Set(modeLabels.map(l => l.term));
     return {
-      types: uniqueSorted(parsedLabels.map(l => l.type)),
-      locations: uniqueSorted(parsedLabels.map(l => l.location)),
-      years: uniqueSorted(parsedLabels.map(l => l.year)).reverse(),
-      terms: TERMS.filter(t => terms.has(t)),
+      type: uniqueSorted(modeLabels.map(l => l.type)),
+      location: uniqueSorted(modeLabels.map(l => l.location)),
+      year: uniqueSorted(modeLabels.map(l => l.year)).reverse(),
+      term: TERMS.filter(t => terms.has(t)) as string[],
     };
-  }, [parsedLabels]);
+  }, [parsedLabels, labelMode]);
 
   const groupOptions = useMemo(() => {
     const counts = new Map<string, number>();
@@ -118,27 +120,59 @@ const DashboardPage: FC = () => {
 
   // ---- Builder: criteria -> labels ----
 
-  const resolved = useMemo(() => {
-    const { names, problem } = labelNamesForCriteria(criteria);
-    const found: ParsedLabelRow[] = [];
-    const missing: string[] = [];
-    names.forEach(n => {
-      const label = labelByName.get(n.toLowerCase());
-      if (label) found.push(label);
-      else missing.push(n);
-    });
-    return { names, found, missing, problem };
-  }, [criteria, labelByName]);
+  const resolve = useCallback(
+    (c: LabelCriteria) => {
+      const { names, problem, approximate } = labelNamesForCriteria(c, labelMode);
+      const found: ParsedLabelRow[] = [];
+      const missing: string[] = [];
+      names.forEach(n => {
+        const label = labelByName.get(n.toLowerCase());
+        if (label) found.push(label);
+        else missing.push(n);
+      });
+      return { names, found, missing, problem, approximate };
+    },
+    [labelMode, labelByName]
+  );
 
-  function updateCriteria(key: keyof LabelCriteria, value: string) {
-    const next = { ...criteria, [key]: value || undefined };
-    setCriteria(next);
+  // A combination is possible when every label it needs exists and has contacts.
+  // A term without a year is possible if it works for at least one year.
+  const isPossible = useCallback(
+    (c: LabelCriteria): boolean => {
+      if (c.term && !c.year) return builderValues.year.some(y => isPossible({ ...c, year: y }));
+      const r = resolve(c);
+      return !r.problem && r.names.length > 0 && r.missing.length === 0 && r.found.every(l => l.count > 0);
+    },
+    [resolve, builderValues]
+  );
+
+  // Live options: only values that still lead to existing labels given the other choices.
+  const optionsFor = (key: CriteriaKey, anyLabel: string) => {
+    const options = builderValues[key]
+      .filter(v => isPossible({ ...criteria, [key]: v }))
+      .map(v => {
+        const r = resolve({ ...criteria, [key]: v });
+        const count = r.found.length === 1 && !r.problem ? r.found[0].count : undefined;
+        return { id: v, value: count !== undefined ? `${v} (${count.toLocaleString('en-GB')})` : v };
+      });
+    return [{ id: ANY, value: anyLabel }, ...options];
+  };
+
+  const resolved = useMemo(() => resolve(criteria), [resolve, criteria]);
+
+  function updateCriteria(key: CriteriaKey, value: string) {
+    setCriteria({ ...criteria, [key]: value || undefined });
+  }
+
+  function changeLabelMode(mode: LabelMode) {
+    setLabelMode(mode);
+    setCriteria({});
   }
 
   // Builder drives the selection whenever it resolves to labels.
   useEffect(() => {
     if (finderTab !== 'builder') return;
-    setSelectedKeys(resolved.missing.length ? [] : resolved.found.map(l => l.key));
+    setSelectedKeys(resolved.missing.length || resolved.problem ? [] : resolved.found.map(l => l.key));
     setMatchMode('all');
     setContactRows(null);
   }, [resolved, finderTab]);
@@ -179,7 +213,7 @@ const DashboardPage: FC = () => {
   // ---- Columns ----
 
   const browseColumns = [
-    { title: 'Group', render: (row: ParsedLabelRow) => row.group, width: '30%' },
+    { title: 'Group', render: (row: ParsedLabelRow) => row.group, width: '35%' },
     {
       title: 'Label',
       render: (row: ParsedLabelRow) => (row.group === OTHER_GROUP ? row.displayName : row.value),
@@ -188,60 +222,48 @@ const DashboardPage: FC = () => {
   ];
 
   const contactColumns = [
-    { title: 'Name', render: (row: ContactRow) => row.name },
-    { title: 'Email', render: (row: ContactRow) => row.email },
+    { title: 'Name', render: (row: ContactRow) => row.name, width: '25%' },
+    { title: 'Email', render: (row: ContactRow) => row.email, width: '40%' },
     { title: 'Phone', render: (row: ContactRow) => row.phone },
     { title: 'Created', render: (row: ContactRow) => row.createdDate },
-    { title: 'Last activity', render: (row: ContactRow) => row.lastActivity },
   ];
 
   // ---- Render pieces ----
 
+  const dropdown = (key: CriteriaKey, label: string, anyLabel: string) => (
+    <FormField label={label}>
+      <Dropdown
+        options={optionsFor(key, anyLabel)}
+        selectedId={criteria[key] || ANY}
+        onSelect={o => updateCriteria(key, String(o.id))}
+      />
+    </FormField>
+  );
+
   const builder = (
     <Box direction="vertical" gap="SP3" padding="SP4">
+      <SegmentedToggle
+        size="small"
+        selected={labelMode}
+        onClick={(_e, value) => changeLabelMode(value as LabelMode)}
+      >
+        <SegmentedToggle.Button value="bookings">Bookings</SegmentedToggle.Button>
+        <SegmentedToggle.Button value="freeTrials">Free trials</SegmentedToggle.Button>
+      </SegmentedToggle>
+
       <Layout gap="18px">
-        <Cell span={6}>
-          <FormField label="Course type">
-            <Dropdown
-              options={[anyOption('Any course type'), ...toOptions(builderOptions.types)]}
-              selectedId={criteria.type || ANY}
-              onSelect={o => updateCriteria('type', String(o.id))}
-            />
-          </FormField>
-        </Cell>
-        <Cell span={6}>
-          <FormField label="Location">
-            <Dropdown
-              options={[anyOption('Any location'), ...toOptions(builderOptions.locations)]}
-              selectedId={criteria.location || ANY}
-              onSelect={o => updateCriteria('location', String(o.id))}
-            />
-          </FormField>
-        </Cell>
-        <Cell span={6}>
-          <FormField label="Term">
-            <Dropdown
-              options={[anyOption('Any term'), ...toOptions(builderOptions.terms)]}
-              selectedId={criteria.term || ANY}
-              onSelect={o => updateCriteria('term', String(o.id))}
-            />
-          </FormField>
-        </Cell>
-        <Cell span={6}>
-          <FormField label="Year">
-            <Dropdown
-              options={[anyOption('Any year'), ...toOptions(builderOptions.years)]}
-              selectedId={criteria.year || ANY}
-              onSelect={o => updateCriteria('year', String(o.id))}
-            />
-          </FormField>
-        </Cell>
+        <Cell span={6}>{dropdown('type', 'Course type', 'Any course type')}</Cell>
+        {builderValues.location.length > 0 && (
+          <Cell span={6}>{dropdown('location', 'Location', 'Any location')}</Cell>
+        )}
+        <Cell span={6}>{dropdown('term', 'Term', 'Any term')}</Cell>
+        <Cell span={6}>{dropdown('year', 'Year', 'Any year')}</Cell>
       </Layout>
 
       {resolved.problem && <SectionHelper appearance="warning">{resolved.problem}</SectionHelper>}
 
       {!resolved.problem && resolved.names.length === 0 && (
-        <Text size="small" secondary>Pick a course type, location or year to find the matching label.</Text>
+        <Text size="small" secondary>Pick a course type, location, term or year to find the matching label.</Text>
       )}
 
       {resolved.missing.length > 0 && (
@@ -250,7 +272,7 @@ const DashboardPage: FC = () => {
         </SectionHelper>
       )}
 
-      {resolved.found.length > 0 && resolved.missing.length === 0 && (
+      {resolved.found.length > 0 && resolved.missing.length === 0 && !resolved.problem && (
         <Box direction="vertical" gap="SP1">
           <Text size="small" weight="bold">Matching label{resolved.found.length > 1 ? 's' : ''}</Text>
           {resolved.found.map(l => (
@@ -261,10 +283,10 @@ const DashboardPage: FC = () => {
         </Box>
       )}
 
-      {criteria.type && criteria.location && (
+      {resolved.approximate && resolved.missing.length === 0 && (
         <SectionHelper appearance="standard">
-          There is no single label for a course type at a location. This finds contacts with both labels, so
-          they may have booked the course type at a different location in the same period.
+          No single label covers this combination, so this finds contacts with all of these labels. They may
+          match through different bookings in the same period.
         </SectionHelper>
       )}
 
@@ -286,7 +308,7 @@ const DashboardPage: FC = () => {
       <TableToolbar>
         <TableToolbar.ItemGroup position="start">
           <TableToolbar.Item>
-            <Box width="220px">
+            <Box width="200px">
               <Dropdown
                 size="small"
                 options={groupOptions}
@@ -308,6 +330,90 @@ const DashboardPage: FC = () => {
       </TableToolbar>
       <Table.Content />
     </Table>
+  );
+
+  const selectedCard = (
+    <Card>
+      <Card.Header
+        title="Selected labels"
+        subtitle={finderTab === 'browse' ? 'Click labels in the list to add or remove them' : undefined}
+      />
+      <Card.Content>
+        <Box direction="vertical" gap="SP3">
+          {selectedKeys.length === 0 ? (
+            <Text size="small" secondary>No labels selected yet.</Text>
+          ) : (
+            <Box gap="SP1" flexWrap="wrap">
+              {selectedKeys.map(key => (
+                <Tag key={key} id={key} size="small" removable onRemove={toggleSelected}>
+                  {labelByKey.get(key)?.displayName || key}
+                </Tag>
+              ))}
+            </Box>
+          )}
+
+          {selectedKeys.length > 1 && (
+            <Box gap="SP2" verticalAlign="middle">
+              <Text size="small">Contacts with</Text>
+              <SegmentedToggle
+                size="small"
+                selected={matchMode}
+                onClick={(_e, value) => {
+                  setMatchMode(value as MatchMode);
+                  setContactRows(null);
+                }}
+              >
+                <SegmentedToggle.Button value="all">All of these</SegmentedToggle.Button>
+                <SegmentedToggle.Button value="any">Any of these</SegmentedToggle.Button>
+              </SegmentedToggle>
+            </Box>
+          )}
+
+          <Box gap="SP2">
+            <Button size="small" onClick={findContacts} disabled={!selectedKeys.length || loadingContacts}>
+              {loadingContacts ? 'Finding contacts...' : 'Find contacts'}
+            </Button>
+            <Button
+              size="small"
+              priority="secondary"
+              disabled={!selectedKeys.length}
+              onClick={() => {
+                setSelectedKeys([]);
+                setContactRows(null);
+              }}
+            >
+              Clear
+            </Button>
+          </Box>
+        </Box>
+      </Card.Content>
+    </Card>
+  );
+
+  const contactsCard = (
+    <Card>
+      <Card.Header
+        title="Contacts"
+        subtitle={contactRows ? `${contactRows.length.toLocaleString('en-GB')} contacts found` : undefined}
+      />
+      {contactRows && contactRows.length > 0 ? (
+        <Table data={contactRows} columns={contactColumns}>
+          <Table.Content />
+        </Table>
+      ) : (
+        <Card.Content>
+          <EmptyState
+            title={contactRows ? 'No contacts found' : 'No search yet'}
+            subtitle={
+              contactRows
+                ? 'No contacts have this combination of labels.'
+                : 'Choose labels on the left, then click Find contacts.'
+            }
+            skin="section"
+          />
+        </Card.Content>
+      )}
+    </Card>
   );
 
   return (
@@ -341,120 +447,27 @@ const DashboardPage: FC = () => {
               <Text size="small" secondary>{status}</Text>
             </Cell>
 
-            <Cell span={6}>
-              <Card>
-                <Card.Header title="Find a label" />
-                <Box paddingLeft="SP4" paddingRight="SP4">
-                  <Tabs
-                    activeId={finderTab}
-                    onClick={item => setFinderTab(String(item.id))}
-                    items={[
-                      { id: 'builder', title: 'By course' },
-                      { id: 'browse', title: 'Browse all labels' },
-                    ]}
-                  />
-                </Box>
-                {finderTab === 'builder' ? builder : browse}
-              </Card>
-            </Cell>
-
-            <Cell span={6}>
+            <Cell span={5}>
               <Box direction="vertical" gap="SP4">
                 <Card>
-                  <Card.Header
-                    title="Selected labels"
-                    subtitle={finderTab === 'browse' ? 'Click labels in the list to add or remove them' : undefined}
-                  />
-                  <Card.Content>
-                    <Box direction="vertical" gap="SP3">
-                      {selectedKeys.length === 0 ? (
-                        <Text size="small" secondary>No labels selected yet.</Text>
-                      ) : (
-                        <Box gap="SP1" flexWrap="wrap">
-                          {selectedKeys.map(key => (
-                            <Tag
-                              key={key}
-                              id={key}
-                              size="small"
-                              removable
-                              onRemove={toggleSelected}
-                            >
-                              {labelByKey.get(key)?.displayName || key}
-                            </Tag>
-                          ))}
-                        </Box>
-                      )}
-
-                      {selectedKeys.length > 1 && (
-                        <Box gap="SP2" verticalAlign="middle">
-                          <Text size="small">Contacts with</Text>
-                          <SegmentedToggle
-                            size="small"
-                            selected={matchMode}
-                            onClick={(_e, value) => {
-                              setMatchMode(value as MatchMode);
-                              setContactRows(null);
-                            }}
-                          >
-                            <SegmentedToggle.Button value="all">All of these</SegmentedToggle.Button>
-                            <SegmentedToggle.Button value="any">Any of these</SegmentedToggle.Button>
-                          </SegmentedToggle>
-                        </Box>
-                      )}
-
-                      <Box gap="SP2">
-                        <Button
-                          size="small"
-                          onClick={findContacts}
-                          disabled={!selectedKeys.length || loadingContacts}
-                        >
-                          {loadingContacts ? 'Finding contacts...' : 'Find contacts'}
-                        </Button>
-                        <Button
-                          size="small"
-                          priority="secondary"
-                          disabled={!selectedKeys.length}
-                          onClick={() => {
-                            setSelectedKeys([]);
-                            setContactRows(null);
-                          }}
-                        >
-                          Clear
-                        </Button>
-                      </Box>
-                    </Box>
-                  </Card.Content>
+                  <Card.Header title="Find a label" />
+                  <Box paddingLeft="SP4" paddingRight="SP4">
+                    <Tabs
+                      activeId={finderTab}
+                      onClick={item => setFinderTab(String(item.id))}
+                      items={[
+                        { id: 'builder', title: 'By course' },
+                        { id: 'browse', title: 'Browse all labels' },
+                      ]}
+                    />
+                  </Box>
+                  {finderTab === 'builder' ? builder : browse}
                 </Card>
+                {selectedCard}
               </Box>
             </Cell>
 
-            <Cell span={12}>
-                <Card>
-                  <Card.Header
-                    title="Contacts"
-                    subtitle={
-                      contactRows ? `${contactRows.length.toLocaleString('en-GB')} contacts found` : undefined
-                    }
-                  />
-                  {contactRows && contactRows.length > 0 ? (
-                    <Table data={contactRows} columns={contactColumns}>
-                      <Table.Content />
-                    </Table>
-                  ) : (
-                    <Card.Content>
-                      <EmptyState
-                        title={contactRows ? 'No contacts found' : 'No search yet'}
-                        subtitle={
-                          contactRows
-                            ? 'No contacts have this combination of labels.'
-                            : 'Choose labels, then click Find contacts.'
-                        }
-                        skin="section"
-                      />
-                    </Card.Content>
-                  )}
-                </Card>
-            </Cell>
+            <Cell span={7}>{contactsCard}</Cell>
           </Layout>
         </Page.Content>
       </Page>

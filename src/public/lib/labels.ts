@@ -1,4 +1,6 @@
-// Parses the structured contact labels created by getOrderLabels (Velo backend), e.g.
+// Parses the structured contact labels created by getOrderLabels (Velo backend).
+//
+// Bookings labels:
 //   "Course Type:Little Stars"
 //   "Course Term:Spring 2026"
 //   "Course Year:2026"
@@ -7,11 +9,21 @@
 //   "Location and Year:Battersea, 2026"
 //   "Type and Term:Little Stars, Spring 2026"
 //   "Type and Year:Little Stars, 2026"
-// Anything else (e.g. "Free Trial") is grouped under "Other".
+//
+// Free trial labels:
+//   "Free Trial"                                  (every free trial)
+//   "Free Trial Course:Tiny Stars"
+//   "Free Trial Term:Spring 2026"
+//   "Free Trial Year:2026"
+//   "Free Trial Course Term:Tiny Stars, Spring 2026"
+//
+// Anything else is grouped under "Other".
 
 export const TERMS = ["Spring", "Summer", "Autumn", "Winter"] as const;
 
-export const STRUCTURED_GROUPS = [
+export type LabelMode = "bookings" | "freeTrials";
+
+export const BOOKING_GROUPS = [
     "Course Type",
     "Course Term",
     "Course Year",
@@ -22,11 +34,23 @@ export const STRUCTURED_GROUPS = [
     "Type and Year",
 ];
 
+export const FREE_TRIAL_GROUPS = [
+    "Free Trial Course",
+    "Free Trial Term",
+    "Free Trial Year",
+    "Free Trial Course Term",
+    "Free Trial Location",
+];
+
+export const STRUCTURED_GROUPS = [...BOOKING_GROUPS, ...FREE_TRIAL_GROUPS];
+
 export const OTHER_GROUP = "Other";
+export const ALL_FREE_TRIALS_LABEL = "Free Trial";
 
 export interface ParsedLabel {
     group: string;
     value: string;
+    mode?: LabelMode;
     type?: string;
     location?: string;
     term?: string;
@@ -38,6 +62,14 @@ export interface LabelCriteria {
     location?: string;
     term?: string;
     year?: string;
+}
+
+export interface ResolvedLabels {
+    names: string[];
+    problem?: string;
+    // True when the labels are combined (contact has all of them) rather than one exact label,
+    // so a contact could match through different bookings.
+    approximate?: boolean;
 }
 
 const termYearRegex = /^(Spring|Summer|Autumn|Winter)\s+(\d{4})$/i;
@@ -55,9 +87,11 @@ export function parseLabel(displayName: string): ParsedLabel {
     const value = displayName.slice(i + 1).trim();
     if (!STRUCTURED_GROUPS.includes(group)) return { group: OTHER_GROUP, value: displayName };
 
-    const parsed: ParsedLabel = { group, value };
-    const isType = group === "Course Type" || group.startsWith("Type and");
-    const isLocation = group.startsWith("Location");
+    const mode: LabelMode = FREE_TRIAL_GROUPS.includes(group) ? "freeTrials" : "bookings";
+    const parsed: ParsedLabel = { group, value, mode };
+    const isType =
+        group === "Course Type" || group.startsWith("Type and") || group.startsWith("Free Trial Course");
+    const isLocation = group.includes("Location");
 
     value.split(",").map(p => p.trim()).filter(Boolean).forEach(part => {
         const termYear = part.match(termYearRegex);
@@ -76,14 +110,7 @@ export function parseLabel(displayName: string): ParsedLabel {
     return parsed;
 }
 
-// The label display names whose intersection (contact has ALL of them) best matches the criteria.
-// Uses the most specific label available for each side (course type / location).
-export function labelNamesForCriteria(c: LabelCriteria): { names: string[]; problem?: string } {
-    if (c.term && !c.year) {
-        return { names: [], problem: "Pick a year to go with the term." };
-    }
-
-    const termYear = c.term && c.year ? `${c.term} ${c.year}` : undefined;
+function resolveBookings(c: LabelCriteria, termYear?: string): ResolvedLabels {
     const names: string[] = [];
 
     if (c.type) {
@@ -103,7 +130,43 @@ export function labelNamesForCriteria(c: LabelCriteria): { names: string[]; prob
         else if (c.year) names.push(`Course Year:${c.year}`);
     }
 
-    return { names };
+    return { names, approximate: names.length > 1 };
+}
+
+function resolveFreeTrials(c: LabelCriteria, termYear?: string): ResolvedLabels {
+    const names: string[] = [];
+    let approximate = false;
+
+    if (c.type) {
+        if (termYear) {
+            names.push(`Free Trial Course Term:${c.type}, ${termYear}`);
+        } else if (c.year) {
+            // No "course + year" free trial label, so combine course and year.
+            names.push(`Free Trial Course:${c.type}`, `Free Trial Year:${c.year}`);
+            approximate = true;
+        } else {
+            names.push(`Free Trial Course:${c.type}`);
+        }
+    }
+
+    if (c.location) names.push(`Free Trial Location:${c.location}`);
+
+    if (!c.type && !c.location) {
+        if (termYear) names.push(`Free Trial Term:${termYear}`);
+        else if (c.year) names.push(`Free Trial Year:${c.year}`);
+        else names.push(ALL_FREE_TRIALS_LABEL);
+    }
+
+    return { names, approximate: approximate || names.length > 1 };
+}
+
+// The label display names whose intersection (contact has ALL of them) best matches the criteria.
+export function labelNamesForCriteria(c: LabelCriteria, mode: LabelMode = "bookings"): ResolvedLabels {
+    if (c.term && !c.year) {
+        return { names: [], problem: "Pick a year to go with the term." };
+    }
+    const termYear = c.term && c.year ? `${c.term} ${c.year}` : undefined;
+    return mode === "freeTrials" ? resolveFreeTrials(c, termYear) : resolveBookings(c, termYear);
 }
 
 export function uniqueSorted(values: (string | undefined)[]): string[] {
