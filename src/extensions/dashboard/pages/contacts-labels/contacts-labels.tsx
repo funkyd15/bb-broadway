@@ -23,7 +23,7 @@ import {
 } from '@wix/design-system';
 import { Refresh } from '@wix/wix-ui-icons-common/odeditor';
 import { ExternalLinkSmall, DuplicateSmall, ConfirmSmall } from '@wix/wix-ui-icons-common';
-import { openContactInWix, openContactDetails } from '../../../../public/lib/dashboardLinks';
+import { openContactInWix, openContactDetails, openWixContacts } from '../../../../public/lib/dashboardLinks';
 import '@wix/design-system/styles.global.css';
 
 import {
@@ -684,9 +684,14 @@ const DashboardPage: FC = () => {
           title="BB Broadway Contacts"
           subtitle="Find the right label, then list the contacts who have it"
           actionsBar={
-            <Button prefixIcon={<Refresh />} onClick={refreshAll} disabled={loadingLabels}>
-              Refresh
-            </Button>
+            <Box gap="SP2">
+              <Button priority="secondary" suffixIcon={<ExternalLinkSmall />} onClick={openWixContacts}>
+                Wix Contacts
+              </Button>
+              <Button prefixIcon={<Refresh />} onClick={refreshAll} disabled={loadingLabels}>
+                Refresh
+              </Button>
+            </Box>
           }
         />
         <Page.Content>

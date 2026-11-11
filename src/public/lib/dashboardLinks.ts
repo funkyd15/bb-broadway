@@ -17,6 +17,12 @@ export async function openContactInWix(contactId: string) {
     window.open(url, "_blank", "noopener");
 }
 
+// Opens the Wix Contacts list in a new browser tab.
+export async function openWixContacts() {
+    const url = await dashboard.getPageUrl({ pageId: CONTACTS_PAGE_ID });
+    window.open(url, "_blank", "noopener");
+}
+
 export function openContactDetails(params: ContactDetailsParams) {
     dashboard.openModal({ modalId: CONTACT_DETAILS_MODAL_ID, params: { ...params } });
 }
