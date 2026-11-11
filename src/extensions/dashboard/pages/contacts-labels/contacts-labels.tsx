@@ -64,6 +64,7 @@ const DashboardPage: FC = () => {
   const [criteria, setCriteria] = useState<LabelCriteria>({});
   const [browseGroup, setBrowseGroup] = useState<string>(ALL_GROUPS);
   const [browseSearch, setBrowseSearch] = useState<string>('');
+  const [browseSort, setBrowseSort] = useState<'count' | 'az'>('count');
 
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const [matchMode, setMatchMode] = useState<MatchMode>('all');
@@ -214,12 +215,21 @@ const DashboardPage: FC = () => {
 
   const browseRows = useMemo(() => {
     const search = browseSearch.trim().toLowerCase();
-    return parsedLabels.filter(
+    const rows = parsedLabels.filter(
       l =>
         (browseGroup === ALL_GROUPS || l.group === browseGroup) &&
         (!search || l.displayName.toLowerCase().includes(search))
     );
-  }, [parsedLabels, browseGroup, browseSearch]);
+    // A-Z uses the text shown in the list (the value, or the full name for Other labels).
+    const shown = (l: ParsedLabelRow) => (l.group === OTHER_GROUP ? l.displayName : l.value);
+    return browseSort === 'az'
+      ? [...rows].sort(
+          (a, b) =>
+            shown(a).localeCompare(shown(b), 'en-GB', { sensitivity: 'base', numeric: true }) ||
+            a.group.localeCompare(b.group)
+        )
+      : [...rows].sort((a, b) => b.count - a.count);
+  }, [parsedLabels, browseGroup, browseSearch, browseSort]);
 
   function resetFinder() {
     if (finderTab === 'builder') setCriteria({});
@@ -478,6 +488,27 @@ const DashboardPage: FC = () => {
           onChange={e => setBrowseSearch(e.target.value)}
           onClear={() => setBrowseSearch('')}
         />
+        <Box gap="SP2" verticalAlign="middle">
+          <Box flexShrink={0}>
+            <Text size="small" secondary>Sort by</Text>
+          </Box>
+          <Box gap="SP1">
+            <Button
+              size="tiny"
+              priority={browseSort === 'count' ? 'primary' : 'secondary'}
+              onClick={() => setBrowseSort('count')}
+            >
+              Most contacts
+            </Button>
+            <Button
+              size="tiny"
+              priority={browseSort === 'az' ? 'primary' : 'secondary'}
+              onClick={() => setBrowseSort('az')}
+            >
+              A-Z
+            </Button>
+          </Box>
+        </Box>
       </Box>
       <Table.Content />
     </Table>
