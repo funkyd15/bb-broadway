@@ -19,9 +19,10 @@ import {
   SegmentedToggle,
   SectionHelper,
   TextButton,
+  Badge,
 } from '@wix/design-system';
 import { Refresh } from '@wix/wix-ui-icons-common/odeditor';
-import { ExternalLinkSmall } from '@wix/wix-ui-icons-common';
+import { ExternalLinkSmall, DuplicateSmall, ConfirmSmall } from '@wix/wix-ui-icons-common';
 import { openContactInWix, openContactDetails } from '../../../../public/lib/dashboardLinks';
 import '@wix/design-system/styles.global.css';
 
@@ -67,6 +68,12 @@ const DashboardPage: FC = () => {
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const [matchMode, setMatchMode] = useState<MatchMode>('all');
   const [contactRows, setContactRows] = useState<ContactRow[] | null>(null);
+
+  // Contact search runs over ALL contacts (not just the filtered ones).
+  const [contactSearch, setContactSearch] = useState<string>('');
+  const [allContacts, setAllContacts] = useState<ContactRow[] | null>(null);
+  const [loadingAll, setLoadingAll] = useState<boolean>(false);
+  const allRequestRef = useRef(0);
 
   // ---- Labels ----
 
@@ -119,6 +126,13 @@ const DashboardPage: FC = () => {
   useEffect(() => {
     refreshLabels();
   }, [refreshLabels]);
+
+  function refreshAll() {
+    allRequestRef.current++;
+    setAllContacts(null);
+    setLoadingAll(false);
+    refreshLabels();
+  }
 
   // ---- Builder: criteria -> labels ----
 
@@ -207,6 +221,33 @@ const DashboardPage: FC = () => {
     );
   }, [parsedLabels, browseGroup, browseSearch]);
 
+  function resetFinder() {
+    if (finderTab === 'builder') setCriteria({});
+    else {
+      setBrowseGroup(ALL_GROUPS);
+      setBrowseSearch('');
+    }
+  }
+
+  // Copy the selected label names, one per line (label names can contain commas).
+  const [copied, setCopied] = useState(false);
+  async function copySelectedLabels() {
+    const text = selectedKeys.map(k => labelByKey.get(k)?.displayName || k).join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // Fallback for when the clipboard API is blocked inside the dashboard iframe.
+      const area = document.createElement('textarea');
+      area.value = text;
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand('copy');
+      document.body.removeChild(area);
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
   function toggleSelected(key: string) {
     setSelectedKeys(keys => (keys.includes(key) ? keys.filter(k => k !== key) : [...keys, key]));
   }
@@ -249,6 +290,54 @@ const DashboardPage: FC = () => {
     return () => clearTimeout(timer);
   }, [selectionKey, matchMode, labelNames]);
 
+  // ---- Contact search ----
+
+  const searchText = contactSearch.trim().toLowerCase();
+  const searching = searchText.length > 0;
+
+  // Load every contact once in the background after the labels, so searching is instant.
+  useEffect(() => {
+    if (allContacts || loadingAll || !labelNames.size || loadingLabels) return;
+    const requestId = ++allRequestRef.current;
+    const isLatest = () => requestId === allRequestRef.current;
+    setLoadingAll(true);
+    queryContactsByFilter({}, labelNames, () => {})
+      .then(rows => isLatest() && setAllContacts(rows))
+      .catch(error => {
+        console.error('load all contacts', error);
+        if (isLatest()) setStatus(`Error loading contacts: ${(error as Error)?.message || error}`);
+      })
+      .finally(() => isLatest() && setLoadingAll(false));
+  }, [allContacts, loadingAll, labelNames, loadingLabels]);
+
+  // Does this contact match the selected labels (using the current All / Any setting)?
+  const inFilter = useCallback(
+    (row: ContactRow) =>
+      selectedKeys.length > 0 &&
+      (matchMode === 'all'
+        ? selectedKeys.every(k => row.labelKeys.includes(k))
+        : selectedKeys.some(k => row.labelKeys.includes(k))),
+    [selectedKeys, matchMode]
+  );
+
+  const searchRows = useMemo(() => {
+    if (!searching || !allContacts) return null;
+    const digits = searchText.replace(/\D/g, '');
+    const rows = allContacts.filter(
+      r =>
+        r.name.toLowerCase().includes(searchText) ||
+        r.email.toLowerCase().includes(searchText) ||
+        r.company.toLowerCase().includes(searchText) ||
+        (digits.length >= 3 && r.phone.replace(/\D/g, '').includes(digits))
+    );
+    // Contacts inside the label filter first.
+    return [...rows.filter(inFilter), ...rows.filter(r => !inFilter(r))];
+  }, [searching, searchText, allContacts, inFilter]);
+
+  const shownRows = searching ? searchRows : contactRows;
+  const shownLoading = searching ? !searchRows : loadingContacts;
+  const searchInFilterCount = searchRows ? searchRows.filter(inFilter).length : 0;
+
   // ---- Columns ----
 
   const browseColumns = [
@@ -265,13 +354,37 @@ const DashboardPage: FC = () => {
   ];
 
   const contactColumns = [
-    { title: 'Name', render: (row: ContactRow) => row.name, width: '24%' },
-    { title: 'Email', render: (row: ContactRow) => row.email, width: '34%' },
-    { title: 'Phone', render: (row: ContactRow) => row.phone },
-    { title: 'Created', render: (row: ContactRow) => row.createdDate },
+    { title: 'Name', render: (row: ContactRow) => row.name },
+    {
+      title: 'Email / phone',
+      render: (row: ContactRow) => (
+        <Box direction="vertical">
+          <span style={{ wordBreak: 'break-all' }}>
+            <Text size="small">{row.email}</Text>
+          </span>
+          {row.phone && <Text size="tiny" secondary>{row.phone}</Text>}
+        </Box>
+      ),
+    },
+    { title: 'Created', render: (row: ContactRow) => row.createdDate, width: '95px' },
+    ...(searching && selectedKeys.length
+      ? [
+          {
+            title: 'Labels',
+            width: '95px',
+            render: (row: ContactRow) =>
+              inFilter(row) ? (
+                <Badge size="tiny" skin="success">In filter</Badge>
+              ) : (
+                <Badge size="tiny" skin="neutralLight">Outside</Badge>
+              ),
+          },
+        ]
+      : []),
     {
       title: '',
       align: 'end' as const,
+      width: '120px',
       render: (row: ContactRow) => (
         <span onClick={e => e.stopPropagation()}>
           <TextButton size="small" suffixIcon={<ExternalLinkSmall />} onClick={() => openContactInWix(row._id)}>
@@ -341,46 +454,6 @@ const DashboardPage: FC = () => {
           match through different bookings in the same period.
         </SectionHelper>
       )}
-
-      {relatedLabels.length > 0 && (
-        <Box direction="vertical" gap="SP1">
-          <Text size="small" weight="bold">All related labels ({relatedLabels.length})</Text>
-          <Text size="tiny" secondary>Click a label to add it to (or remove it from) the selected labels.</Text>
-          <Box direction="vertical" gap="SP1" maxHeight="260px" overflowY="auto">
-            {relatedLabels.map(l => {
-              const selected = selectedKeys.includes(l.key);
-              return (
-                <div
-                  key={l.key}
-                  role="button"
-                  title={selected ? 'Remove from selected labels' : 'Add to selected labels'}
-                  onClick={() => toggleSelected(l.key)}
-                  style={{
-                    cursor: 'pointer',
-                    borderRadius: 6,
-                    padding: '2px 6px',
-                    background: selected ? 'var(--wds-color-fill-primary-hover, #e7f0ff)' : undefined,
-                  }}
-                >
-                  <Box gap="SP2" verticalAlign="middle">
-                    <Box direction="vertical" flexGrow={1}>
-                      <Text size="small" weight={selected ? 'bold' : undefined}>{l.value}</Text>
-                      <Text size="tiny" secondary>{l.group}</Text>
-                    </Box>
-                    <Text size="small" secondary>{l.count.toLocaleString('en-GB')}</Text>
-                  </Box>
-                </div>
-              );
-            })}
-          </Box>
-        </Box>
-      )}
-
-      <Box>
-        <Button size="small" priority="secondary" onClick={() => setCriteria({})}>
-          Reset
-        </Button>
-      </Box>
     </Box>
   );
 
@@ -410,11 +483,62 @@ const DashboardPage: FC = () => {
     </Table>
   );
 
+  // Every label related to the chosen values, in its own card below Selected labels.
+  const relatedCard =
+    finderTab === 'builder' && relatedLabels.length > 0 ? (
+      <Card>
+        <Card.Header
+          title={`All related labels (${relatedLabels.length})`}
+          subtitle="Click a label to add it to (or remove it from) the selected labels"
+        />
+        <Card.Content>
+          <Box direction="vertical" gap="SP1" maxHeight="420px" overflowY="auto">
+            {relatedLabels.map(l => {
+              const selected = selectedKeys.includes(l.key);
+              return (
+                <div
+                  key={l.key}
+                  role="button"
+                  title={selected ? 'Remove from selected labels' : 'Add to selected labels'}
+                  onClick={() => toggleSelected(l.key)}
+                  style={{
+                    cursor: 'pointer',
+                    borderRadius: 6,
+                    padding: '2px 6px',
+                    background: selected ? 'var(--wds-color-fill-primary-hover, #e7f0ff)' : undefined,
+                  }}
+                >
+                  <Box gap="SP2" verticalAlign="middle">
+                    <Box direction="vertical" flexGrow={1}>
+                      <Text size="small" weight={selected ? 'bold' : undefined}>{l.value}</Text>
+                      <Text size="tiny" secondary>{l.group}</Text>
+                    </Box>
+                    <Text size="small" secondary>{l.count.toLocaleString('en-GB')}</Text>
+                  </Box>
+                </div>
+              );
+            })}
+          </Box>
+        </Card.Content>
+      </Card>
+    ) : null;
+
   const selectedCard = (
     <Card>
       <Card.Header
         title="Selected labels"
         subtitle={finderTab === 'browse' ? 'Click labels in the list to add or remove them' : undefined}
+        suffix={
+          <Button
+            size="small"
+            priority="secondary"
+            prefixIcon={copied ? <ConfirmSmall /> : <DuplicateSmall />}
+            disabled={!selectedKeys.length}
+            onClick={copySelectedLabels}
+          >
+            {copied ? 'Copied' : 'Copy'}
+          </Button>
+        }
       />
       <Card.Content>
         <Box direction="vertical" gap="SP3">
@@ -462,21 +586,55 @@ const DashboardPage: FC = () => {
     </Card>
   );
 
+  const subtitle = searching
+    ? !searchRows
+      ? 'Loading all contacts to search...'
+      : `${searchRows.length.toLocaleString('en-GB')} matching "${contactSearch.trim()}"` +
+        (selectedKeys.length ? ` (${searchInFilterCount.toLocaleString('en-GB')} in filter)` : '')
+    : loadingContacts
+      ? 'Finding contacts...'
+      : contactRows
+        ? `${contactRows.length.toLocaleString('en-GB')} contacts found`
+        : undefined;
+
+  const emptyTitle = shownLoading
+    ? searching
+      ? 'Loading all contacts...'
+      : 'Finding contacts...'
+    : searching
+      ? 'No contacts match your search'
+      : contactRows
+        ? 'No contacts found'
+        : 'No labels selected';
+
+  const emptySubtitle = shownLoading
+    ? undefined
+    : searching
+      ? 'Search looks at every contact, by name, email, phone or company.'
+      : contactRows
+        ? 'No contacts have this combination of labels.'
+        : 'Choose labels on the left, or search for a contact.';
+
   const contactsCard = (
     <Card>
       <Card.Header
         title="Contacts"
-        subtitle={
-          loadingContacts
-            ? 'Finding contacts...'
-            : contactRows
-              ? `${contactRows.length.toLocaleString('en-GB')} contacts found`
-              : undefined
+        subtitle={subtitle}
+        suffix={
+          <Box width="280px">
+            <Search
+              size="small"
+              placeholder="Search all contacts"
+              value={contactSearch}
+              onChange={e => setContactSearch(e.target.value)}
+              onClear={() => setContactSearch('')}
+            />
+          </Box>
         }
       />
-      {contactRows && contactRows.length > 0 ? (
+      {shownRows && shownRows.length > 0 ? (
         <Table
-          data={contactRows}
+          data={shownRows}
           columns={contactColumns}
           onRowClick={(row: ContactRow) => openContactDetails({ contactId: row._id, labelNames: row.labelList })}
         >
@@ -484,17 +642,7 @@ const DashboardPage: FC = () => {
         </Table>
       ) : (
         <Card.Content>
-          <EmptyState
-            title={loadingContacts ? 'Finding contacts...' : contactRows ? 'No contacts found' : 'No labels selected'}
-            subtitle={
-              loadingContacts
-                ? undefined
-                : contactRows
-                  ? 'No contacts have this combination of labels.'
-                  : 'Choose labels on the left to see their contacts.'
-            }
-            skin="section"
-          />
+          <EmptyState title={emptyTitle} subtitle={emptySubtitle} skin="section" />
         </Card.Content>
       )}
     </Card>
@@ -507,7 +655,7 @@ const DashboardPage: FC = () => {
           title="BB Broadway Contacts"
           subtitle="Find the right label, then list the contacts who have it"
           actionsBar={
-            <Button prefixIcon={<Refresh />} onClick={refreshLabels} disabled={loadingLabels}>
+            <Button prefixIcon={<Refresh />} onClick={refreshAll} disabled={loadingLabels}>
               Refresh
             </Button>
           }
@@ -534,7 +682,14 @@ const DashboardPage: FC = () => {
             <Cell span={4}>
               <Box direction="vertical" gap="SP4">
                 <Card>
-                  <Card.Header title="Find a label" />
+                  <Card.Header
+                    title="Find a label"
+                    suffix={
+                      <Button size="small" priority="secondary" onClick={resetFinder}>
+                        Reset
+                      </Button>
+                    }
+                  />
                   <Box paddingLeft="SP4" paddingRight="SP4">
                     <Tabs
                       activeId={finderTab}
@@ -548,6 +703,7 @@ const DashboardPage: FC = () => {
                   {finderTab === 'builder' ? builder : browse}
                 </Card>
                 {selectedCard}
+                {relatedCard}
               </Box>
             </Cell>
 

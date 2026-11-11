@@ -26,6 +26,7 @@ export interface ContactRow {
     company: string;
     labels: string;
     labelList: string[];
+    labelKeys: string[];
     createdDate: string;
     lastActivity: string;
 }
@@ -130,6 +131,7 @@ export async function queryContactsByFilter(
             company: c.info?.company || "",
             labels: labelList.join(", "),
             labelList,
+            labelKeys: keys,
             createdDate: c._createdDate ? new Date(c._createdDate).toLocaleDateString("en-GB") : "",
             lastActivity: c.lastActivity?.activityDate
                 ? new Date(c.lastActivity.activityDate).toLocaleDateString("en-GB")
