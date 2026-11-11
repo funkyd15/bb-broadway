@@ -229,10 +229,10 @@ const DashboardPage: FC = () => {
     }
   }
 
-  // Copy the selected label names, one per line (label names can contain commas).
-  const [copied, setCopied] = useState(false);
-  async function copySelectedLabels() {
-    const text = selectedKeys.map(k => labelByKey.get(k)?.displayName || k).join('\n');
+  // Copy one label's name, ready to paste into the Wix Contacts label filter.
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  async function copyLabel(key: string) {
+    const text = labelByKey.get(key)?.displayName || key;
     try {
       await navigator.clipboard.writeText(text);
     } catch {
@@ -244,8 +244,8 @@ const DashboardPage: FC = () => {
       document.execCommand('copy');
       document.body.removeChild(area);
     }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(k => (k === key ? null : k)), 2000);
   }
 
   function toggleSelected(key: string) {
@@ -528,28 +528,26 @@ const DashboardPage: FC = () => {
       <Card.Header
         title="Selected labels"
         subtitle={finderTab === 'browse' ? 'Click labels in the list to add or remove them' : undefined}
-        suffix={
-          <Button
-            size="small"
-            priority="secondary"
-            prefixIcon={copied ? <ConfirmSmall /> : <DuplicateSmall />}
-            disabled={!selectedKeys.length}
-            onClick={copySelectedLabels}
-          >
-            {copied ? 'Copied' : 'Copy'}
-          </Button>
-        }
       />
       <Card.Content>
         <Box direction="vertical" gap="SP3">
           {selectedKeys.length === 0 ? (
             <Text size="small" secondary>No labels selected yet.</Text>
           ) : (
-            <Box gap="SP1" flexWrap="wrap">
+            <Box direction="vertical" gap="SP1">
               {selectedKeys.map(key => (
-                <Tag key={key} id={key} size="small" removable onRemove={toggleSelected}>
-                  {labelByKey.get(key)?.displayName || key}
-                </Tag>
+                <Box key={key} gap="SP1" verticalAlign="middle">
+                  <Tag id={key} size="small" removable onRemove={toggleSelected}>
+                    {labelByKey.get(key)?.displayName || key}
+                  </Tag>
+                  <TextButton
+                    size="tiny"
+                    prefixIcon={copiedKey === key ? <ConfirmSmall /> : <DuplicateSmall />}
+                    onClick={() => copyLabel(key)}
+                  >
+                    {copiedKey === key ? 'Copied' : 'Copy'}
+                  </TextButton>
+                </Box>
               ))}
             </Box>
           )}
