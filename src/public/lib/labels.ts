@@ -9,6 +9,7 @@
 //   "Location and Year:Battersea, 2026"
 //   "Type and Term:Little Stars, Spring 2026"
 //   "Type and Year:Little Stars, 2026"
+//   "Type, Location and Term:Little Stars, Battersea, Spring 2026"
 //
 // Free trial labels:
 //   "Free Trial"                                  (every free trial)
@@ -16,6 +17,7 @@
 //   "Free Trial Term:Spring 2026"
 //   "Free Trial Year:2026"
 //   "Free Trial Course Term:Tiny Stars, Spring 2026"
+//   "Free Trial:Tiny Stars, Battersea, Spring 2026"
 //
 // Anything else is grouped under "Other".
 
@@ -32,6 +34,7 @@ export const BOOKING_GROUPS = [
     "Location and Year",
     "Type and Term",
     "Type and Year",
+    "Type, Location and Term",
 ];
 
 export const FREE_TRIAL_GROUPS = [
@@ -40,7 +43,11 @@ export const FREE_TRIAL_GROUPS = [
     "Free Trial Year",
     "Free Trial Course Term",
     "Free Trial Location",
+    "Free Trial",
 ];
+
+// Groups whose value is "Type, Location, Term Year", always in that order.
+const TYPE_LOCATION_TERM_GROUPS = ["Type, Location and Term", "Free Trial"];
 
 export const STRUCTURED_GROUPS = [...BOOKING_GROUPS, ...FREE_TRIAL_GROUPS];
 
@@ -89,6 +96,18 @@ export function parseLabel(displayName: string): ParsedLabel {
 
     const mode: LabelMode = FREE_TRIAL_GROUPS.includes(group) ? "freeTrials" : "bookings";
     const parsed: ParsedLabel = { group, value, mode };
+
+    if (TYPE_LOCATION_TERM_GROUPS.includes(group)) {
+        const parts = value.split(",").map(p => p.trim());
+        const termYear = parts[parts.length - 1]?.match(termYearRegex);
+        if (parts.length < 3 || !termYear) return { group: OTHER_GROUP, value: displayName };
+        parsed.type = parts[0];
+        parsed.location = parts.slice(1, -1).join(", ");
+        parsed.term = titleCase(termYear[1]);
+        parsed.year = termYear[2];
+        return parsed;
+    }
+
     const isType =
         group === "Course Type" || group.startsWith("Type and") || group.startsWith("Free Trial Course");
     const isLocation = group.includes("Location");
@@ -111,6 +130,11 @@ export function parseLabel(displayName: string): ParsedLabel {
 }
 
 function resolveBookings(c: LabelCriteria, termYear?: string): ResolvedLabels {
+    // One exact label covers course type + location + term.
+    if (c.type && c.location && termYear) {
+        return { names: [`Type, Location and Term:${c.type}, ${c.location}, ${termYear}`] };
+    }
+
     const names: string[] = [];
 
     if (c.type) {
@@ -134,6 +158,11 @@ function resolveBookings(c: LabelCriteria, termYear?: string): ResolvedLabels {
 }
 
 function resolveFreeTrials(c: LabelCriteria, termYear?: string): ResolvedLabels {
+    // One exact label covers course type + location + term.
+    if (c.type && c.location && termYear) {
+        return { names: [`Free Trial:${c.type}, ${c.location}, ${termYear}`] };
+    }
+
     const names: string[] = [];
     let approximate = false;
 

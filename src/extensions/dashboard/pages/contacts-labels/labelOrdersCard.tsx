@@ -10,6 +10,7 @@ import {
   SectionHelper,
   StatisticsWidget,
   Table,
+  Tag,
   Text,
 } from '@wix/design-system';
 import {
@@ -39,6 +40,21 @@ const statusText: Record<OrderLabelResult['status'], string> = {
   labelled: 'Labelled',
   failed: 'Failed',
 };
+
+// Labels as bubble tags. New labels are green, existing ones grey.
+const LabelTags: FC<{ labels: string[]; newLabels: Set<string>; size: 'tiny' | 'small' }> = ({
+  labels,
+  newLabels,
+  size,
+}) => (
+  <Box gap="SP1" flexWrap="wrap" paddingTop="SP1" paddingBottom="SP1">
+    {labels.map(l => (
+      <Tag key={l} id={l} size={size} removable={false} skin={newLabels.has(l) ? 'success' : 'neutral'}>
+        {l}
+      </Tag>
+    ))}
+  </Box>
+);
 
 function startOfToday() {
   const d = new Date();
@@ -102,6 +118,23 @@ const LabelOrdersCard: FC<Props> = ({ onLabelled, existingLabelNames }) => {
     }
   }
 
+  // Labels the preview would need that don't exist on the site yet.
+  const wouldCreate =
+    results && existingLabelNames.size
+      ? [
+          ...new Set(
+            results
+              .filter(r => r.status === 'ready')
+              .flatMap(r => r.labels)
+              .filter(n => !existingLabelNames.has(n.toLowerCase()))
+          ),
+        ].sort()
+      : [];
+
+  // Before a run: labels that will be created. After a run: labels that were created.
+  const newLabelList = applied ? applied.newLabels : wouldCreate;
+  const newLabelSet = new Set(newLabelList);
+
   const columns = [
     { title: 'Order', render: (r: OrderLabelResult) => `#${r.orderNumber}`, width: '80px' },
     { title: 'Date', render: (r: OrderLabelResult) => r.createdDate, width: '95px' },
@@ -123,7 +156,7 @@ const LabelOrdersCard: FC<Props> = ({ onLabelled, existingLabelNames }) => {
         r.message ? (
           <Text size="small" secondary>{r.message}</Text>
         ) : (
-          <Text size="tiny">{r.labels.join(' · ')}</Text>
+          <LabelTags labels={r.labels} newLabels={newLabelSet} size="tiny" />
         ),
     },
     ...(applied
@@ -145,19 +178,6 @@ const LabelOrdersCard: FC<Props> = ({ onLabelled, existingLabelNames }) => {
       ),
     },
   ];
-
-  // Labels the preview would need that don't exist on the site yet.
-  const wouldCreate =
-    results && existingLabelNames.size
-      ? [
-          ...new Set(
-            results
-              .filter(r => r.status === 'ready')
-              .flatMap(r => r.labels)
-              .filter(n => !existingLabelNames.has(n.toLowerCase()))
-          ),
-        ].sort()
-      : [];
 
   const summary = results
     ? `${results.length} bookings orders · ${ready} ready · ${count('skipped')} skipped` +
@@ -226,18 +246,24 @@ const LabelOrdersCard: FC<Props> = ({ onLabelled, existingLabelNames }) => {
               ]}
             />
           )}
-          {applied && applied.newLabels.length > 0 && (
-            <Text size="tiny" secondary>New labels: {applied.newLabels.join(' · ')}</Text>
-          )}
-
           <Text size="small" secondary>{status}</Text>
           {summary && <Text size="small" weight="bold">{summary}</Text>}
-          {!applied && results && (
-            <Text size="small">
-              {wouldCreate.length
-                ? `${wouldCreate.length} new label${wouldCreate.length === 1 ? '' : 's'} will be created: ${wouldCreate.join(' · ')}`
-                : 'No new labels will be created. All of these labels already exist.'}
-            </Text>
+
+          {results && (
+            <Box direction="vertical" gap="SP2">
+              <Text size="small" weight="bold">
+                {newLabelList.length
+                  ? `${newLabelList.length} new label${newLabelList.length === 1 ? '' : 's'} ${applied ? 'created' : 'will be created'}`
+                  : applied
+                    ? 'No new labels were created'
+                    : 'No new labels will be created. All of these labels already exist.'}
+              </Text>
+              {newLabelList.length > 0 && <LabelTags labels={newLabelList} newLabels={newLabelSet} size="small" />}
+              <Box gap="SP2" verticalAlign="middle">
+                <Tag id="key-new" size="tiny" removable={false} skin="success">New label</Tag>
+                <Tag id="key-existing" size="tiny" removable={false} skin="neutral">Existing label</Tag>
+              </Box>
+            </Box>
           )}
         </Box>
       </Card.Content>

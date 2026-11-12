@@ -26,6 +26,7 @@ import { ExternalLinkSmall, DuplicateSmall, ConfirmSmall } from '@wix/wix-ui-ico
 import { openContactInWix, openContactDetails, openWixContacts } from '../../../../public/lib/dashboardLinks';
 import '@wix/design-system/styles.global.css';
 import LabelOrdersCard from './labelOrdersCard';
+import UnlabelledLocationsCard from './unlabelledLocationsCard';
 
 import {
   loadLabelSummary,
@@ -59,6 +60,7 @@ const DashboardPage: FC = () => {
   const [loadingLabels, setLoadingLabels] = useState<boolean>(false);
   const [loadingContacts, setLoadingContacts] = useState<boolean>(false);
   const [summary, setSummary] = useState<LabelSummary | null>(null);
+  const [refreshCount, setRefreshCount] = useState(0);
 
   const [finderTab, setFinderTab] = useState<string>('builder');
   const [labelMode, setLabelMode] = useState<LabelMode>('bookings');
@@ -131,6 +133,7 @@ const DashboardPage: FC = () => {
   }, [refreshLabels]);
 
   function refreshAll() {
+    setRefreshCount(n => n + 1);
     allRequestRef.current++;
     setAllContacts(null);
     setLoadingAll(false);
@@ -698,6 +701,10 @@ const DashboardPage: FC = () => {
         />
         <Page.Content>
           <Layout>
+            <Cell span={12}>
+              <UnlabelledLocationsCard refreshKey={refreshCount} />
+            </Cell>
+
             <Cell span={12}>
               <Card>
                 <StatisticsWidget

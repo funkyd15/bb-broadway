@@ -23,6 +23,14 @@ export async function openWixContacts() {
     window.open(url, "_blank", "noopener");
 }
 
+// The "locations" CMS collection, where each venue's location label is set.
+export const LOCATIONS_CMS_URL =
+    "https://manage.wix.com/dashboard/0210b701-c715-482e-bdcf-2e8185181308/wix-cms/data/locations";
+
+export function openLocationsCms() {
+    window.open(LOCATIONS_CMS_URL, "_blank", "noopener");
+}
+
 export function openContactDetails(params: ContactDetailsParams) {
     dashboard.openModal({ modalId: CONTACT_DETAILS_MODAL_ID, params: { ...params } });
 }
