@@ -27,6 +27,7 @@ import { openContactInWix, openContactDetails, openWixContacts } from '../../../
 import '@wix/design-system/styles.global.css';
 import LabelOrdersCard from './labelOrdersCard';
 import UnlabelledLocationsCard from './unlabelledLocationsCard';
+import { APP_VERSION_TEXT } from '../../../../public/lib/version';
 
 import {
   loadLabelSummary,
@@ -686,7 +687,12 @@ const DashboardPage: FC = () => {
     <WixDesignSystemProvider features={{ newColorsBranding: true }}>
       <Page>
         <Page.Header
-          title="BB Broadway Contacts"
+          title={
+            <Box gap="SP2" verticalAlign="middle">
+              <span>BB Broadway Contacts</span>
+              <Badge size="small" skin="neutralLight" uppercase={false}>{APP_VERSION_TEXT}</Badge>
+            </Box>
+          }
           subtitle="Find the right label, then list the contacts who have it"
           actionsBar={
             <Box gap="SP2">
