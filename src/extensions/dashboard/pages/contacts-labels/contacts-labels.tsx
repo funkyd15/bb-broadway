@@ -88,7 +88,7 @@ const DashboardPage: FC = () => {
 
   const labelByKey = useMemo(() => new Map(parsedLabels.map(l => [l.key, l])), [parsedLabels]);
   const labelByName = useMemo(
-    () => new Map(parsedLabels.map(l => [l.displayName.toLowerCase(), l])),
+    () => new Map(parsedLabels.map(l => [l.displayName.replace(/\s+/g, ' ').trim().toLowerCase(), l])),
     [parsedLabels]
   );
   const labelNames = useMemo(() => new Map(parsedLabels.map(l => [l.key, l.displayName])), [parsedLabels]);
@@ -719,6 +719,10 @@ const DashboardPage: FC = () => {
             </Cell>
 
             <Cell span={12}>
+              <LabelOrdersCard onLabelled={refreshAll} existingLabelNames={existingLabelNames} />
+            </Cell>
+
+            <Cell span={12}>
               <Text size="small" secondary>{status}</Text>
             </Cell>
 
@@ -751,10 +755,6 @@ const DashboardPage: FC = () => {
             </Cell>
 
             <Cell span={8}>{contactsCard}</Cell>
-
-            <Cell span={12}>
-              <LabelOrdersCard onLabelled={refreshAll} existingLabelNames={existingLabelNames} />
-            </Cell>
           </Layout>
         </Page.Content>
       </Page>

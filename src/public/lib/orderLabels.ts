@@ -74,13 +74,18 @@ export async function findUnlabelledLocations(): Promise<UnlabelledLocation[]> {
         .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+// The client's typing often has trailing or double spaces: tidy every text value before using it.
+export function clean(value: unknown): string {
+    return String(value ?? "").replace(/s+/g, " ").trim();
+}
+
 async function loadLookupData(): Promise<LookupData> {
     const [locationItems, courseTypeItems] = await Promise.all([queryAll("locations"), queryAll("courseTypeLabels")]);
     return {
-        locations: new Map(locationItems.filter(i => i.label).map(i => [i._id, String(i.label).trim()])),
+        locations: new Map(locationItems.filter(i => clean(i.label)).map(i => [i._id, clean(i.label)])),
         courseTypes: courseTypeItems
-            .filter(i => i.label && i.findText)
-            .map(i => ({ label: String(i.label), findText: String(i.findText).toLowerCase() })),
+            .filter(i => clean(i.label) && clean(i.findText))
+            .map(i => ({ label: clean(i.label), findText: clean(i.findText).toLowerCase() })),
     };
 }
 
@@ -139,7 +144,7 @@ export function labelsForOrder(
     let freetrial = false;
     let sibling = false;
     (order.appliedDiscounts || []).forEach(d => {
-        const code = (d.coupon?.code || "").toLowerCase();
+        const code = clean(d.coupon?.code).toLowerCase();
         if (code === "freetrial") {
             add("Free Trial");
             freetrial = true;
@@ -155,7 +160,7 @@ export function labelsForOrder(
     });
 
     bookingsLineItems(order).forEach(item => {
-        const name = (item.productName?.original || "").toLowerCase();
+        const name = clean(item.productName?.original).toLowerCase();
         const bookingId = item.catalogReference?.catalogItemId || "";
         const locationId = bookingLocations.get(bookingId);
         const locationLabel = locationId ? lookup.locations.get(locationId) : undefined;
@@ -196,7 +201,7 @@ export function labelsForOrder(
         add(courseTypeLabel && year && `Type and Year:${courseTypeLabel}, ${year}`);
     });
 
-    return [...new Set(out.map(l => l.trim()))];
+    return [...new Set(out.map(clean))];
 }
 
 // Step 1: work out the labels for every bookings order since the date. Changes nothing.
@@ -253,7 +258,7 @@ export async function previewOrderLabels(since: Date, status: Status): Promise<O
             return;
         }
         r.missing = r.labels.filter(name => {
-            const key = labelKeyByName.get(name.toLowerCase());
+            const key = labelKeyByName.get(clean(name).toLowerCase());
             return !key || !has.has(key);
         });
         if (!r.missing.length) r.status = "current";
@@ -270,7 +275,7 @@ async function loadLabelKeysByName(): Promise<Map<string, string>> {
     while (true) {
         const res = await labels.listLabels({ paging: { limit: contactPageLimit, offset } });
         const page = res.labels || [];
-        page.forEach(l => l.key && l.displayName && map.set(l.displayName.toLowerCase(), l.key));
+        page.forEach(l => l.key && l.displayName && map.set(clean(l.displayName).toLowerCase(), l.key));
         if (page.length < contactPageLimit) break;
         offset += contactPageLimit;
     }
@@ -332,16 +337,26 @@ export async function applyOrderLabels(
 ): Promise<ApplySummary> {
     const newLabels = new Set<string>();
 
+    // Labels that already exist are used by key, so only brand new labels need creating.
+    const existingKeys = await loadLabelKeysByName();
+
     // Cache the lookup itself, so orders running side by side share one call per label.
     const labelKeys = new Map<string, Promise<string>>();
     function keyFor(displayName: string): Promise<string> {
+        const existing = existingKeys.get(clean(displayName).toLowerCase());
+        if (existing) return Promise.resolve(existing);
         const cached = labelKeys.get(displayName);
         if (cached) return cached;
-        const key: Promise<string> = labels.findOrCreateLabel(displayName).then(res => {
-            if (!res.label?.key) throw new Error(`Could not find or create label "${displayName}"`);
-            if (res.newLabel) newLabels.add(displayName);
-            return res.label.key;
-        });
+        const key: Promise<string> = labels
+            .findOrCreateLabel(clean(displayName))
+            .catch(error => {
+                throw new Error(describeError(error, "create the label", "Manage Contact Labels"));
+            })
+            .then(res => {
+                if (!res.label?.key) throw new Error(`Could not find or create label "${displayName}"`);
+                if (res.newLabel) newLabels.add(displayName);
+                return res.label.key;
+            });
         key.catch(() => labelKeys.delete(displayName));
         labelKeys.set(displayName, key);
         return key;
@@ -367,13 +382,15 @@ export async function applyOrderLabels(
                     const names = [...new Set(contactOrders.flatMap(r => r.missing))];
                     const keys: string[] = [];
                     for (const name of names) keys.push(await keyFor(name));
-                    await contacts.labelContact(contactId, [...new Set(keys)]);
+                    await contacts.labelContact(contactId, [...new Set(keys)]).catch(error => {
+                        throw new Error(describeError(error, "label the contact", "Manage Contacts"));
+                    });
                     contactsUpdated++;
                     labelsAdded += names.length;
                     updated = contactOrders.map(r => ({ ...r, status: "labelled", message: undefined }));
                 } catch (error) {
                     failedOrders += contactOrders.length;
-                    const message = (error as Error)?.message || String(error);
+                    const message = describeError(error, "add labels", "");
                     updated = contactOrders.map(r => ({ ...r, status: "failed", message }));
                 }
                 done += contactOrders.length;
@@ -383,4 +400,27 @@ export async function applyOrderLabels(
     }
 
     return { newLabels: [...newLabels].sort(), contactsUpdated, labelsAdded, failedOrders };
+}
+
+// A short, readable message for a failed Wix call (instead of the raw error JSON).
+function describeError(error: unknown, action: string, permission: string): string {
+    const e = error as any;
+    let parsed: any;
+    try {
+        parsed = typeof e?.message === "string" && e.message.trim().startsWith("{") ? JSON.parse(e.message) : undefined;
+    } catch {
+        parsed = undefined;
+    }
+    const code =
+        e?.details?.applicationError?.code ??
+        parsed?.details?.applicationError?.code ??
+        e?.httpStatus ??
+        e?.status ??
+        e?.response?.status;
+    if (Number(code) === 403 && permission) {
+        return `No permission to ${action}. The app needs the "${permission}" permission.`;
+    }
+    const message = typeof e?.message === "string" ? e.message.trim() : "";
+    if (message && !message.startsWith("{")) return message;
+    return `Could not ${action}${code ? ` (error ${code})` : ""}.`;
 }
