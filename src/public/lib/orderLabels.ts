@@ -76,7 +76,7 @@ export async function findUnlabelledLocations(): Promise<UnlabelledLocation[]> {
 
 // The client's typing often has trailing or double spaces: tidy every text value before using it.
 export function clean(value: unknown): string {
-    return String(value ?? "").replace(/s+/g, " ").trim();
+    return String(value ?? "").replace(/\s+/g, " ").trim();
 }
 
 async function loadLookupData(): Promise<LookupData> {
