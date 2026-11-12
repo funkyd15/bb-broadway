@@ -8,8 +8,8 @@
 // - A booking with no business location still gets its other labels.
 // - One failing order never stops the rest, and every result is reported.
 // - Labels are looked up once and reused across orders.
-// - Only labels a contact does not already have are added, and the run reports
-//   how many labels were new to the site and how many contacts changed.
+// - Preview reads every buyer's current labels (1,000 contacts per call) and compares,
+//   so it shows only the labels each contact is really missing. Labels are never removed.
 
 import { orders } from "@wix/ecom";
 import { extendedBookings } from "@wix/bookings";
@@ -18,6 +18,7 @@ import { items } from "@wix/data";
 import { wixAppIds } from "./utilities";
 
 const pageLimit = 100;
+const contactPageLimit = 1000;
 const batchSize = 5;
 
 export interface OrderLabelResult {
@@ -27,11 +28,13 @@ export interface OrderLabelResult {
     contactId: string;
     buyerName: string;
     buyerEmail: string;
+    // Every label this order should give its buyer.
     labels: string[];
-    status: "ready" | "skipped" | "labelled" | "failed";
+    // The labels the buyer's contact doesn't have yet (worked out in Preview).
+    missing: string[];
+    // ready = has labels to add; current = contact already has them all.
+    status: "ready" | "current" | "skipped" | "labelled" | "failed";
     message?: string;
-    // After applying: how many of the labels were new to this contact.
-    added?: number;
 }
 
 interface LookupData {
@@ -221,22 +224,72 @@ export async function previewOrderLabels(since: Date, status: Status): Promise<O
             contactId,
             buyerName: `${first} ${last}`.trim(),
             buyerEmail: order.buyerInfo?.email || "",
+            missing: [] as string[],
         };
         try {
             const orderLabels = labelsForOrder(order, bookingLocations, lookup);
             if (!contactId) return { ...base, labels: orderLabels, status: "skipped", message: "Order has no contact" };
-            if (!orderLabels.length) return { ...base, labels: [], status: "skipped", message: "No labels to add" };
+            if (!orderLabels.length) return { ...base, labels: [], status: "skipped", message: "No labels for this order" };
             return { ...base, labels: orderLabels, status: "ready" };
         } catch (error) {
             return { ...base, labels: [], status: "failed", message: (error as Error)?.message || String(error) };
         }
     });
 
-    status(
-        `${results.filter(r => r.status === "ready").length} of ${results.length} bookings orders ready to label ` +
-            `(${allOrders.length} orders since ${since.toLocaleDateString("en-GB")})`
-    );
+    // Compare with what each buyer already has.
+    const contactIds = [...new Set(results.filter(r => r.status === "ready").map(r => r.contactId))];
+    status(`Checking the current labels of ${contactIds.length} contacts...`);
+    const [labelKeyByName, contactKeys] = await Promise.all([
+        loadLabelKeysByName(),
+        loadContactLabelKeys(contactIds, status),
+    ]);
+
+    results.forEach(r => {
+        if (r.status !== "ready") return;
+        const has = contactKeys.get(r.contactId);
+        if (!has) {
+            r.status = "failed";
+            r.message = "Contact not found";
+            return;
+        }
+        r.missing = r.labels.filter(name => {
+            const key = labelKeyByName.get(name.toLowerCase());
+            return !key || !has.has(key);
+        });
+        if (!r.missing.length) r.status = "current";
+    });
+
+    status(`Checked ${results.length} bookings orders since ${since.toLocaleDateString("en-GB")}.`);
     return results;
+}
+
+// Every label on the site, by lower-case display name.
+async function loadLabelKeysByName(): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    let offset = 0;
+    while (true) {
+        const res = await labels.listLabels({ paging: { limit: contactPageLimit, offset } });
+        const page = res.labels || [];
+        page.forEach(l => l.key && l.displayName && map.set(l.displayName.toLowerCase(), l.key));
+        if (page.length < contactPageLimit) break;
+        offset += contactPageLimit;
+    }
+    return map;
+}
+
+// The current label keys of each contact, 1,000 contacts per call.
+async function loadContactLabelKeys(contactIds: string[], status: Status): Promise<Map<string, Set<string>>> {
+    const keys = new Map<string, Set<string>>();
+    for (let i = 0; i < contactIds.length; i += contactPageLimit) {
+        const ids = contactIds.slice(i, i + contactPageLimit);
+        const res = await contacts.queryContacts({
+            filter: { _id: { $in: ids } },
+            paging: { limit: contactPageLimit },
+        } as contacts.ContactQuery);
+        (res.contacts || []).forEach(c => c._id && keys.set(c._id, new Set(c.info?.labelKeys?.items || [])));
+        status(`Checking the current labels of ${contactIds.length} contacts... (${keys.size})`);
+    }
+    return keys;
 }
 
 export interface ApplySummary {
@@ -244,15 +297,35 @@ export interface ApplySummary {
     newLabels: string[];
     // Contacts that got at least one label they did not have.
     contactsUpdated: number;
-    // Contacts that already had every label.
-    contactsUnchanged: number;
     // Total labels added across all contacts.
     labelsAdded: number;
     failedOrders: number;
 }
 
-// Step 2: add the previewed labels to each contact, a few orders at a time.
-// Only labels the contact does not already have are added.
+// Totals across contacts (a buyer with several orders counts once).
+export function previewTotals(results: OrderLabelResult[]) {
+    const missingByContact = new Map<string, Set<string>>();
+    const checkedContacts = new Set<string>();
+    results.forEach(r => {
+        if (r.status !== "ready" && r.status !== "current") return;
+        checkedContacts.add(r.contactId);
+        if (!r.missing.length) return;
+        const set = missingByContact.get(r.contactId) || new Set<string>();
+        r.missing.forEach(m => set.add(m));
+        missingByContact.set(r.contactId, set);
+    });
+    let labelsToAdd = 0;
+    missingByContact.forEach(s => (labelsToAdd += s.size));
+    return {
+        contactsChecked: checkedContacts.size,
+        contactsToUpdate: missingByContact.size,
+        contactsUpToDate: checkedContacts.size - missingByContact.size,
+        labelsToAdd,
+    };
+}
+
+// Step 2: add each contact's missing labels (from Preview), a few contacts at a time.
+// Labels are only ever added, never removed.
 export async function applyOrderLabels(
     results: OrderLabelResult[],
     onProgress: (done: number, total: number, updated: OrderLabelResult) => void
@@ -275,12 +348,11 @@ export async function applyOrderLabels(
     }
 
     let contactsUpdated = 0;
-    let contactsUnchanged = 0;
     let labelsAdded = 0;
     let failedOrders = 0;
 
-    // One buyer can have several orders: handle each contact once, with all their labels.
-    const todo = results.filter(r => r.status === "ready");
+    // One buyer can have several orders: handle each contact once, with all their missing labels.
+    const todo = results.filter(r => r.status === "ready" && r.missing.length > 0);
     const byContact = new Map<string, OrderLabelResult[]>();
     todo.forEach(r => byContact.set(r.contactId, [...(byContact.get(r.contactId) || []), r]));
     const contactIds = [...byContact.keys()];
@@ -292,26 +364,13 @@ export async function applyOrderLabels(
                 const contactOrders = byContact.get(contactId) || [];
                 let updated: OrderLabelResult[];
                 try {
-                    const names = [...new Set(contactOrders.flatMap(r => r.labels))];
-                    const keyByName = new Map<string, string>();
-                    for (const name of names) keyByName.set(name, await keyFor(name));
-                    const contact = await contacts.getContact(contactId);
-                    const has = new Set(contact.info?.labelKeys?.items || []);
-                    const missing = [...new Set(keyByName.values())].filter(k => !has.has(k));
-                    if (missing.length) {
-                        await contacts.labelContact(contactId, missing);
-                        contactsUpdated++;
-                        labelsAdded += missing.length;
-                    } else {
-                        contactsUnchanged++;
-                    }
-                    const missingSet = new Set(missing);
-                    updated = contactOrders.map(r => ({
-                        ...r,
-                        status: "labelled",
-                        message: undefined,
-                        added: r.labels.filter(n => missingSet.has(keyByName.get(n) || "")).length,
-                    }));
+                    const names = [...new Set(contactOrders.flatMap(r => r.missing))];
+                    const keys: string[] = [];
+                    for (const name of names) keys.push(await keyFor(name));
+                    await contacts.labelContact(contactId, [...new Set(keys)]);
+                    contactsUpdated++;
+                    labelsAdded += names.length;
+                    updated = contactOrders.map(r => ({ ...r, status: "labelled", message: undefined }));
                 } catch (error) {
                     failedOrders += contactOrders.length;
                     const message = (error as Error)?.message || String(error);
@@ -323,5 +382,5 @@ export async function applyOrderLabels(
         );
     }
 
-    return { newLabels: [...newLabels].sort(), contactsUpdated, contactsUnchanged, labelsAdded, failedOrders };
+    return { newLabels: [...newLabels].sort(), contactsUpdated, labelsAdded, failedOrders };
 }

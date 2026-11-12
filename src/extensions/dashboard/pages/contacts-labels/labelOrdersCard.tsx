@@ -1,4 +1,4 @@
-import React, { type FC, useState } from 'react';
+import React, { type FC, useMemo, useState } from 'react';
 import {
   Badge,
   Box,
@@ -8,6 +8,7 @@ import {
   FormField,
   LinearProgressBar,
   SectionHelper,
+  SegmentedToggle,
   StatisticsWidget,
   Table,
   Tag,
@@ -16,6 +17,7 @@ import {
 import {
   previewOrderLabels,
   applyOrderLabels,
+  previewTotals,
   type OrderLabelResult,
   type ApplySummary,
 } from '../../../../public/lib/orderLabels';
@@ -27,29 +29,41 @@ type Props = {
   existingLabelNames: Set<string>;
 };
 
-const statusSkin: Record<OrderLabelResult['status'], 'standard' | 'neutralLight' | 'success' | 'danger'> = {
+type Status = OrderLabelResult['status'];
+
+const statusSkin: Record<Status, 'standard' | 'neutralLight' | 'success' | 'danger'> = {
   ready: 'standard',
+  current: 'neutralLight',
   skipped: 'neutralLight',
   labelled: 'success',
   failed: 'danger',
 };
 
-const statusText: Record<OrderLabelResult['status'], string> = {
-  ready: 'Ready',
+const statusText: Record<Status, string> = {
+  ready: 'To add',
+  current: 'Up to date',
   skipped: 'Skipped',
   labelled: 'Labelled',
   failed: 'Failed',
 };
 
-// Labels as bubble tags. New labels are green, existing ones grey.
-const LabelTags: FC<{ labels: string[]; newLabels: Set<string>; size: 'tiny' | 'small' }> = ({
+type TagKind = 'created' | 'add' | 'has';
+
+const tagSkin: Record<TagKind, 'success' | 'standard' | 'neutral'> = {
+  created: 'success',
+  add: 'standard',
+  has: 'neutral',
+};
+
+// Labels as bubble tags, coloured by what happens to them.
+const LabelTags: FC<{ labels: string[]; kindOf: (label: string) => TagKind; size: 'tiny' | 'small' }> = ({
   labels,
-  newLabels,
+  kindOf,
   size,
 }) => (
   <Box gap="SP1" flexWrap="wrap" paddingTop="SP1" paddingBottom="SP1">
     {labels.map(l => (
-      <Tag key={l} id={l} size={size} removable={false} skin={newLabels.has(l) ? 'success' : 'neutral'}>
+      <Tag key={l} id={l} size={size} removable={false} skin={tagSkin[kindOf(l)]}>
         {l}
       </Tag>
     ))}
@@ -61,6 +75,8 @@ function startOfToday() {
   d.setHours(0, 0, 0, 0);
   return d;
 }
+
+const nf = (n: number) => n.toLocaleString('en-GB');
 
 const LabelOrdersCard: FC<Props> = ({ onLabelled, existingLabelNames }) => {
   const [since, setSince] = useState<Date>(() => {
@@ -74,9 +90,10 @@ const LabelOrdersCard: FC<Props> = ({ onLabelled, existingLabelNames }) => {
   const [confirming, setConfirming] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [applied, setApplied] = useState<ApplySummary | null>(null);
+  const [show, setShow] = useState<'changes' | 'all'>('changes');
 
-  const count = (s: OrderLabelResult['status']) => (results || []).filter(r => r.status === s).length;
-  const ready = count('ready');
+  // Totals from the preview (taken before applying, so they stay as the plan).
+  const [planned, setPlanned] = useState<ReturnType<typeof previewTotals> | null>(null);
 
   async function preview() {
     setBusy('preview');
@@ -84,8 +101,11 @@ const LabelOrdersCard: FC<Props> = ({ onLabelled, existingLabelNames }) => {
     setProgress(null);
     setApplied(null);
     setResults(null);
+    setPlanned(null);
     try {
-      setResults(await previewOrderLabels(since, setStatus));
+      const rows = await previewOrderLabels(since, setStatus);
+      setResults(rows);
+      setPlanned(previewTotals(rows));
     } catch (error) {
       console.error('previewOrderLabels', error);
       setStatus(`Error loading orders: ${(error as Error)?.message || error}`);
@@ -95,10 +115,10 @@ const LabelOrdersCard: FC<Props> = ({ onLabelled, existingLabelNames }) => {
   }
 
   async function apply() {
-    if (!results) return;
+    if (!results || !planned) return;
     setBusy('apply');
     setConfirming(false);
-    setProgress({ done: 0, total: ready });
+    setProgress({ done: 0, total: 0 });
     setStatus('Adding labels...');
     try {
       const result = await applyOrderLabels(results, (done, total, updated) => {
@@ -106,9 +126,7 @@ const LabelOrdersCard: FC<Props> = ({ onLabelled, existingLabelNames }) => {
         setResults(rows => (rows || []).map(r => (r.orderId === updated.orderId ? updated : r)));
       });
       setApplied(result);
-      setStatus(
-        'Done.' + (result.failedOrders ? ` ${result.failedOrders} orders failed, see the list below.` : '')
-      );
+      setStatus('Done.' + (result.failedOrders ? ` ${result.failedOrders} orders failed, see the list below.` : ''));
       onLabelled();
     } catch (error) {
       console.error('applyOrderLabels', error);
@@ -118,22 +136,27 @@ const LabelOrdersCard: FC<Props> = ({ onLabelled, existingLabelNames }) => {
     }
   }
 
-  // Labels the preview would need that don't exist on the site yet.
-  const wouldCreate =
-    results && existingLabelNames.size
-      ? [
-          ...new Set(
-            results
-              .filter(r => r.status === 'ready')
-              .flatMap(r => r.labels)
-              .filter(n => !existingLabelNames.has(n.toLowerCase()))
-          ),
-        ].sort()
-      : [];
+  // Labels that don't exist on the site yet (before a run), or that the run created (after).
+  const newLabelList = useMemo(() => {
+    if (applied) return applied.newLabels;
+    if (!results || !existingLabelNames.size) return [];
+    return [
+      ...new Set(
+        results.flatMap(r => r.missing).filter(n => !existingLabelNames.has(n.toLowerCase()))
+      ),
+    ].sort();
+  }, [applied, results, existingLabelNames]);
+  const newLabelSet = useMemo(() => new Set(newLabelList), [newLabelList]);
 
-  // Before a run: labels that will be created. After a run: labels that were created.
-  const newLabelList = applied ? applied.newLabels : wouldCreate;
-  const newLabelSet = new Set(newLabelList);
+  const shownRows = useMemo(
+    () =>
+      (results || []).filter(r =>
+        show === 'all' ? true : r.missing.length > 0 || r.status === 'failed' || r.status === 'labelled'
+      ),
+    [results, show]
+  );
+
+  const toUpdate = planned?.contactsToUpdate || 0;
 
   const columns = [
     { title: 'Order', render: (r: OrderLabelResult) => `#${r.orderNumber}`, width: '80px' },
@@ -152,44 +175,36 @@ const LabelOrdersCard: FC<Props> = ({ onLabelled, existingLabelNames }) => {
     },
     {
       title: 'Labels',
-      render: (r: OrderLabelResult) =>
-        r.message ? (
-          <Text size="small" secondary>{r.message}</Text>
-        ) : (
-          <LabelTags labels={r.labels} newLabels={newLabelSet} size="tiny" />
-        ),
+      render: (r: OrderLabelResult) => {
+        if (r.message) return <Text size="small" secondary>{r.message}</Text>;
+        const missing = new Set(r.missing);
+        return (
+          <LabelTags
+            labels={r.labels}
+            size="tiny"
+            kindOf={l => (newLabelSet.has(l) ? 'created' : missing.has(l) ? 'add' : 'has')}
+          />
+        );
+      },
     },
-    ...(applied
-      ? [
-          {
-            title: 'New to contact',
-            width: '110px',
-            align: 'end' as const,
-            render: (r: OrderLabelResult) => (r.added === undefined ? '' : String(r.added)),
-          },
-        ]
-      : []),
     {
       title: 'Status',
-      width: '95px',
+      width: '110px',
       align: 'end' as const,
       render: (r: OrderLabelResult) => (
-        <Badge size="tiny" skin={statusSkin[r.status]}>{statusText[r.status]}</Badge>
+        <Box direction="vertical" align="right" gap="SP1">
+          <Badge size="tiny" skin={statusSkin[r.status]}>{statusText[r.status]}</Badge>
+          {r.missing.length > 0 && <Text size="tiny" secondary>{`+${r.missing.length} label${r.missing.length === 1 ? '' : 's'}`}</Text>}
+        </Box>
       ),
     },
   ];
-
-  const summary = results
-    ? `${results.length} bookings orders · ${ready} ready · ${count('skipped')} skipped` +
-      (count('labelled') ? ` · ${count('labelled')} labelled` : '') +
-      (count('failed') ? ` · ${count('failed')} failed` : '')
-    : undefined;
 
   return (
     <Card>
       <Card.Header
         title="Label orders since a date"
-        subtitle="Adds the course, term, location and discount labels from bookings orders to each buyer's contact"
+        subtitle="Checks bookings orders against each buyer's contact and adds only the labels they're missing. Labels are never removed."
       />
       <Card.Content>
         <Box direction="vertical" gap="SP3">
@@ -209,45 +224,56 @@ const LabelOrdersCard: FC<Props> = ({ onLabelled, existingLabelNames }) => {
               />
             </FormField>
             <Button priority="secondary" onClick={preview} disabled={!!busy}>
-              {busy === 'preview' ? 'Loading...' : 'Preview'}
+              {busy === 'preview' ? 'Checking...' : 'Preview'}
             </Button>
-            <Button onClick={() => setConfirming(true)} disabled={!!busy || !ready || confirming}>
-              {`Add labels to ${ready} order${ready === 1 ? '' : 's'}`}
+            <Button onClick={() => setConfirming(true)} disabled={!!busy || !toUpdate || confirming || !!applied}>
+              {`Add labels to ${nf(toUpdate)} contact${toUpdate === 1 ? '' : 's'}`}
             </Button>
           </Box>
 
-          {confirming && (
+          {confirming && planned && (
             <SectionHelper
               appearance="warning"
-              title={`Add labels to the buyers of ${ready} orders?`}
+              title={`Add ${nf(planned.labelsToAdd)} missing labels to ${nf(planned.contactsToUpdate)} contacts?`}
               actionText="Yes, add labels"
               onAction={apply}
               showCloseButton
               onClose={() => setConfirming(false)}
             >
-              Labels are only added, never removed. Contacts that already have a label keep it.
+              Only labels a contact doesn't already have are added. Nothing is removed.
             </SectionHelper>
           )}
 
-          {progress && (
+          {progress && progress.total > 0 && (
             <LinearProgressBar
-              value={progress.total ? Math.round((progress.done / progress.total) * 100) : 100}
+              value={Math.round((progress.done / progress.total) * 100)}
               showProgressIndication
+            />
+          )}
+
+          <Text size="small" secondary>{status}</Text>
+
+          {planned && results && !applied && (
+            <StatisticsWidget
+              items={[
+                { value: nf(results.length), description: 'Bookings orders checked' },
+                { value: nf(planned.contactsUpToDate), description: 'Contacts already up to date' },
+                { value: nf(planned.contactsToUpdate), description: 'Contacts missing labels' },
+                { value: nf(planned.labelsToAdd), description: 'Labels to add' },
+              ]}
             />
           )}
 
           {applied && (
             <StatisticsWidget
               items={[
+                { value: nf(applied.contactsUpdated), description: 'Contacts given missing labels' },
+                { value: nf(applied.labelsAdded), description: 'Labels added' },
                 { value: String(applied.newLabels.length), description: 'New labels created' },
-                { value: applied.contactsUpdated.toLocaleString('en-GB'), description: 'Contacts given new labels' },
-                { value: applied.labelsAdded.toLocaleString('en-GB'), description: 'Labels added in total' },
-                { value: applied.contactsUnchanged.toLocaleString('en-GB'), description: 'Contacts already labelled' },
+                { value: nf(applied.failedOrders), description: 'Orders failed' },
               ]}
             />
           )}
-          <Text size="small" secondary>{status}</Text>
-          {summary && <Text size="small" weight="bold">{summary}</Text>}
 
           {results && (
             <Box direction="vertical" gap="SP2">
@@ -258,17 +284,34 @@ const LabelOrdersCard: FC<Props> = ({ onLabelled, existingLabelNames }) => {
                     ? 'No new labels were created'
                     : 'No new labels will be created. All of these labels already exist.'}
               </Text>
-              {newLabelList.length > 0 && <LabelTags labels={newLabelList} newLabels={newLabelSet} size="small" />}
+              {newLabelList.length > 0 && <LabelTags labels={newLabelList} kindOf={() => 'created'} size="small" />}
               <Box gap="SP2" verticalAlign="middle">
-                <Tag id="key-new" size="tiny" removable={false} skin="success">New label</Tag>
-                <Tag id="key-existing" size="tiny" removable={false} skin="neutral">Existing label</Tag>
+                <Tag id="key-created" size="tiny" removable={false} skin="success">New label</Tag>
+                <Tag id="key-add" size="tiny" removable={false} skin="standard">Will be added to contact</Tag>
+                <Tag id="key-has" size="tiny" removable={false} skin="neutral">Contact already has it</Tag>
               </Box>
+            </Box>
+          )}
+
+          {results && results.length > 0 && (
+            <Box gap="SP2" verticalAlign="middle">
+              <Text size="small">Show</Text>
+              <SegmentedToggle
+                size="small"
+                selected={show}
+                onClick={(_e, value) => setShow(value as 'changes' | 'all')}
+              >
+                <SegmentedToggle.Button value="changes">{`Orders with changes (${nf(
+                  results.filter(r => r.missing.length > 0 || r.status === 'failed').length
+                )})`}</SegmentedToggle.Button>
+                <SegmentedToggle.Button value="all">{`All orders (${nf(results.length)})`}</SegmentedToggle.Button>
+              </SegmentedToggle>
             </Box>
           )}
         </Box>
       </Card.Content>
-      {results && results.length > 0 && (
-        <Table data={results} columns={columns} rowVerticalPadding="tiny">
+      {shownRows.length > 0 && (
+        <Table data={shownRows} columns={columns} rowVerticalPadding="tiny">
           <Table.Content />
         </Table>
       )}
