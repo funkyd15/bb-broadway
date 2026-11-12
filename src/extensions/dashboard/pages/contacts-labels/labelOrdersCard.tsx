@@ -124,7 +124,7 @@ const LabelOrdersCard: FC<Props> = ({ onLabelled, existingLabelNames }) => {
       const result = await applyOrderLabels(results, (done, total, updated) => {
         setProgress({ done, total });
         setResults(rows => (rows || []).map(r => (r.orderId === updated.orderId ? updated : r)));
-      });
+      }, setStatus);
       setApplied(result);
       setStatus('Done.' + (result.failedOrders ? ` ${result.failedOrders} orders failed, see the list below.` : ''));
       onLabelled();

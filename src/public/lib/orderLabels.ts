@@ -331,62 +331,75 @@ export function previewTotals(results: OrderLabelResult[]) {
 
 // Step 2: add each contact's missing labels (from Preview), a few contacts at a time.
 // Labels are only ever added, never removed.
+//
+// Wix quietly skips a label used straight after it is created. So: create every new label first,
+// wait, then label contacts, check what Wix actually saved, and retry anything it skipped.
 export async function applyOrderLabels(
     results: OrderLabelResult[],
-    onProgress: (done: number, total: number, updated: OrderLabelResult) => void
+    onProgress: (done: number, total: number, updated: OrderLabelResult) => void,
+    status: Status = () => {}
 ): Promise<ApplySummary> {
     const newLabels = new Set<string>();
-
-    // Labels that already exist are used by key, so only brand new labels need creating.
-    const existingKeys = await loadLabelKeysByName();
-
-    // Cache the lookup itself, so orders running side by side share one call per label.
-    const labelKeys = new Map<string, Promise<string>>();
-    function keyFor(displayName: string): Promise<string> {
-        const existing = existingKeys.get(clean(displayName).toLowerCase());
-        if (existing) return Promise.resolve(existing);
-        const cached = labelKeys.get(displayName);
-        if (cached) return cached;
-        const key: Promise<string> = labels
-            .findOrCreateLabel(clean(displayName))
-            .catch(error => {
-                throw new Error(describeError(error, "create the label", "Manage Contact Labels"));
-            })
-            .then(res => {
-                if (!res.label?.key) throw new Error(`Could not find or create label "${displayName}"`);
-                if (res.newLabel) newLabels.add(displayName);
-                return res.label.key;
-            });
-        key.catch(() => labelKeys.delete(displayName));
-        labelKeys.set(displayName, key);
-        return key;
-    }
-
-    let contactsUpdated = 0;
-    let labelsAdded = 0;
-    let failedOrders = 0;
 
     // One buyer can have several orders: handle each contact once, with all their missing labels.
     const todo = results.filter(r => r.status === "ready" && r.missing.length > 0);
     const byContact = new Map<string, OrderLabelResult[]>();
     todo.forEach(r => byContact.set(r.contactId, [...(byContact.get(r.contactId) || []), r]));
     const contactIds = [...byContact.keys()];
+
+    // 1. A key for every label needed. Existing labels by key; new labels created now, one at a time.
+    const keyByName = new Map<string, string>();
+    const createErrors = new Map<string, string>();
+    const existingKeys = await loadLabelKeysByName();
+    const needed = [...new Set(todo.flatMap(r => r.missing))];
+    const toCreate: string[] = [];
+    needed.forEach(name => {
+        const key = existingKeys.get(clean(name).toLowerCase());
+        if (key) keyByName.set(name, key);
+        else toCreate.push(name);
+    });
+    for (const [i, name] of toCreate.entries()) {
+        status(`Creating new labels... (${i + 1} of ${toCreate.length})`);
+        try {
+            const res = await labels.findOrCreateLabel(clean(name));
+            if (!res.label?.key) throw new Error(`Could not create label "${name}"`);
+            if (res.newLabel) newLabels.add(name);
+            keyByName.set(name, res.label.key);
+        } catch (error) {
+            createErrors.set(name, describeError(error, "create the label", "Manage Contact Labels"));
+        }
+    }
+    // Give Wix a moment before new labels are used on contacts.
+    if (toCreate.length) {
+        status("Waiting for the new labels to be ready...");
+        await wait(newLabelDelayMs);
+    }
+
+    // 2. Label each contact, then check the labels Wix saved and retry any it skipped.
+    let contactsUpdated = 0;
+    let labelsAdded = 0;
+    let failedOrders = 0;
     let done = 0;
+    status("Adding labels to contacts...");
 
     for (let i = 0; i < contactIds.length; i += batchSize) {
         await Promise.all(
             contactIds.slice(i, i + batchSize).map(async contactId => {
                 const contactOrders = byContact.get(contactId) || [];
+                const names = [...new Set(contactOrders.flatMap(r => r.missing))];
                 let updated: OrderLabelResult[];
                 try {
-                    const names = [...new Set(contactOrders.flatMap(r => r.missing))];
-                    const keys: string[] = [];
-                    for (const name of names) keys.push(await keyFor(name));
-                    await contacts.labelContact(contactId, [...new Set(keys)]).catch(error => {
-                        throw new Error(describeError(error, "label the contact", "Manage Contacts"));
-                    });
-                    contactsUpdated++;
-                    labelsAdded += names.length;
+                    const blocked = names.find(n => createErrors.has(n));
+                    if (blocked) throw new Error(createErrors.get(blocked));
+                    const keys = [...new Set(names.map(n => keyByName.get(n) as string))];
+                    const notSaved = await labelContactChecked(contactId, keys);
+                    const added = keys.length - notSaved.length;
+                    labelsAdded += added;
+                    if (added > 0) contactsUpdated++;
+                    if (notSaved.length) {
+                        const missingNames = names.filter(n => notSaved.includes(keyByName.get(n) as string));
+                        throw new Error(`Wix did not save: ${missingNames.join("; ")}. Run Preview, then try again.`);
+                    }
                     updated = contactOrders.map(r => ({ ...r, status: "labelled", message: undefined }));
                 } catch (error) {
                     failedOrders += contactOrders.length;
@@ -400,6 +413,36 @@ export async function applyOrderLabels(
     }
 
     return { newLabels: [...newLabels].sort(), contactsUpdated, labelsAdded, failedOrders };
+}
+
+const newLabelDelayMs = 4000;
+const retryDelaysMs = [2000, 5000, 10000];
+
+function wait(ms: number) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Adds the labels, then checks the contact Wix sends back. Retries any keys Wix skipped.
+// Returns the keys that still aren't on the contact.
+async function labelContactChecked(contactId: string, keys: string[]): Promise<string[]> {
+    let remaining = keys;
+    for (let attempt = 0; attempt <= retryDelaysMs.length; attempt++) {
+        if (attempt > 0) await wait(retryDelaysMs[attempt - 1]);
+        try {
+            const res = await contacts.labelContact(contactId, remaining);
+            const saved = new Set(res.contact?.info?.labelKeys?.items || []);
+            remaining = remaining.filter(k => !saved.has(k));
+        } catch (error) {
+            const e = error as any;
+            const text = `${e?.message || ""} ${JSON.stringify(e?.details || {})}`;
+            // Wix had nothing it could add yet (a new label not ready): wait and try again.
+            if (!text.includes("EMPTY_ASSIGN_AND_UNASSIGN_LISTS")) {
+                throw new Error(describeError(error, "label the contact", "Manage Contacts"));
+            }
+        }
+        if (!remaining.length) return [];
+    }
+    return remaining;
 }
 
 // A short, readable message for a failed Wix call (instead of the raw error JSON).
