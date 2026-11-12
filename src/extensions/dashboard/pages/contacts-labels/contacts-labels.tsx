@@ -25,6 +25,7 @@ import { Refresh } from '@wix/wix-ui-icons-common/odeditor';
 import { ExternalLinkSmall, DuplicateSmall, ConfirmSmall } from '@wix/wix-ui-icons-common';
 import { openContactInWix, openContactDetails, openWixContacts } from '../../../../public/lib/dashboardLinks';
 import '@wix/design-system/styles.global.css';
+import LabelOrdersCard from './labelOrdersCard';
 
 import {
   loadLabelSummary,
@@ -89,6 +90,7 @@ const DashboardPage: FC = () => {
     [parsedLabels]
   );
   const labelNames = useMemo(() => new Map(parsedLabels.map(l => [l.key, l.displayName])), [parsedLabels]);
+  const existingLabelNames = useMemo(() => new Set(labelByName.keys()), [labelByName]);
 
   // All values seen in labels for the current mode (before narrowing).
   const builderValues = useMemo(() => {
@@ -742,6 +744,10 @@ const DashboardPage: FC = () => {
             </Cell>
 
             <Cell span={8}>{contactsCard}</Cell>
+
+            <Cell span={12}>
+              <LabelOrdersCard onLabelled={refreshAll} existingLabelNames={existingLabelNames} />
+            </Cell>
           </Layout>
         </Page.Content>
       </Page>
