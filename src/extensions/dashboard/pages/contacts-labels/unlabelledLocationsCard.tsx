@@ -28,7 +28,9 @@ const UnlabelledLocationsCard: FC<Props> = ({ refreshKey }) => {
   return (
     <SectionHelper
       appearance="warning"
-      title={`${locations.length} location${locations.length === 1 ? ' has' : 's have'} no label in the CMS`}
+      title={`${locations.length} location${locations.length === 1 ? ' has' : 's have'} no label in the CMS: ${locations
+        .map(l => l.name)
+        .join(', ')}`}
       actionText="Open locations in CMS"
       onAction={openLocationsCms}
     >
@@ -37,11 +39,14 @@ const UnlabelledLocationsCard: FC<Props> = ({ refreshKey }) => {
           Bookings at these locations won't get location labels. Fill in the "label" field for each one, then
           click Refresh.
         </Text>
-        <Box gap="SP1" flexWrap="wrap">
+        <Box direction="vertical" gap="SP1">
           {locations.map(l => (
-            <Tag key={l.id} id={l.id} size="small" removable={false} skin="warning">
-              {l.name}
-            </Tag>
+            <Box key={l.id} gap="SP2" verticalAlign="middle">
+              <Tag id={l.id} size="small" removable={false} skin="warning">
+                {l.name}
+              </Tag>
+              {l.address && <Text size="tiny" secondary>{l.address}</Text>}
+            </Box>
           ))}
         </Box>
       </Box>

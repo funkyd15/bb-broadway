@@ -59,6 +59,7 @@ async function queryAll(collection: string): Promise<any[]> {
 export interface UnlabelledLocation {
     id: string;
     name: string;
+    address: string;
 }
 
 // Locations in the "locations" CMS collection with no label. Bookings at these get no location labels.
@@ -66,7 +67,7 @@ export async function findUnlabelledLocations(): Promise<UnlabelledLocation[]> {
     const all = await queryAll("locations");
     return all
         .filter(i => !i.archived && !String(i.label || "").trim())
-        .map(i => ({ id: i._id, name: String(i.name || i._id) }))
+        .map(i => ({ id: i._id, name: String(i.name || i._id), address: String(i.address?.formatted || "") }))
         .sort((a, b) => a.name.localeCompare(b.name));
 }
 
